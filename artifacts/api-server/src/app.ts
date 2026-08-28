@@ -1,10 +1,16 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+// API clients need a response body on every session bootstrap request.
+// Avoid conditional 304 responses being interpreted as an empty auth payload
+// by a fresh preview/browser session.
+app.disable("etag");
 
 app.use(
   pinoHttp({
@@ -26,6 +32,7 @@ app.use(
   }),
 );
 app.use(cors());
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

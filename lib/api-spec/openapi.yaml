@@ -1,22 +1,28 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
+  # Keep this title stable: it controls generated import paths.
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Attendance Companion REST API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: dashboard
+  - name: attendance
+  - name: exemptions
+  - name: issues
+  - name: notifications
+  - name: students
+  - name: settings
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +30,678 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/demo-login:
+    post:
+      operationId: demoLogin
+      tags: [auth]
+      summary: Start a demo session for a role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemoLoginInput"
+      responses:
+        "200":
+          description: Active session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get the current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get the current dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /attendance/subjects:
+    get:
+      operationId: getSubjectAttendance
+      tags: [attendance]
+      summary: Get subject-level attendance
+      responses:
+        "200":
+          description: Subject attendance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubjectAttendance"
+  /attendance/history:
+    get:
+      operationId: getAttendanceHistory
+      tags: [attendance]
+      summary: Get date-wise attendance history
+      parameters:
+        - $ref: "#/components/parameters/SubjectParam"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PRESENT, ABSENT, EXEMPTED, LATE, NOT_MARKED]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Attendance history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceHistoryResponse"
+  /attendance/trend:
+    get:
+      operationId: getAttendanceTrend
+      tags: [attendance]
+      summary: Get attendance trend points
+      responses:
+        "200":
+          description: Trend points
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrendPoint"
+  /exemptions:
+    get:
+      operationId: getExemptions
+      tags: [exemptions]
+      summary: List exemption requests
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, APPROVED, REJECTED, CANCELLED]
+        - name: page
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Exemption requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExemptionListResponse"
+    post:
+      operationId: createExemption
+      tags: [exemptions]
+      summary: Submit an exemption request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExemptionInput"
+      responses:
+        "201":
+          description: Created request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Exemption"
+  /exemptions/{id}/approve:
+    patch:
+      operationId: approveExemption
+      tags: [exemptions]
+      summary: Approve an exemption request
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: Approved request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Exemption"
+  /exemptions/{id}/reject:
+    patch:
+      operationId: rejectExemption
+      tags: [exemptions]
+      summary: Reject an exemption request
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: Rejected request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Exemption"
+  /attendance-issues:
+    get:
+      operationId: getAttendanceIssues
+      tags: [issues]
+      summary: List attendance issues
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, UNDER_REVIEW, RESOLVED, REJECTED, CANCELLED]
+      responses:
+        "200":
+          description: Attendance issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceIssue"
+    post:
+      operationId: createAttendanceIssue
+      tags: [issues]
+      summary: Report an attendance issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttendanceIssueInput"
+      responses:
+        "201":
+          description: Created issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceIssue"
+  /attendance-issues/{id}/resolve:
+    patch:
+      operationId: resolveAttendanceIssue
+      tags: [issues]
+      summary: Resolve an attendance issue
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueResolutionInput"
+      responses:
+        "200":
+          description: Resolved issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceIssue"
+  /attendance-issues/{id}/reject:
+    patch:
+      operationId: rejectAttendanceIssue
+      tags: [issues]
+      summary: Reject an attendance issue
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: Rejected issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceIssue"
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [notifications]
+      summary: List notifications
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark one notification as read
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: Updated notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+  /students:
+    get:
+      operationId: getStudents
+      tags: [students]
+      summary: List students visible to a mentor or HOD
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: risk
+          in: query
+          schema:
+            type: string
+            enum: [SAFE, WARNING, CRITICAL]
+      responses:
+        "200":
+          description: Students
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Student"
+  /students/{id}:
+    get:
+      operationId: getStudent
+      tags: [students]
+      summary: Get one student profile
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Student profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentProfile"
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get appearance and attendance policy settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+    patch:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update appearance or attendance policy settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
 components:
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    SubjectParam:
+      name: subject
+      in: query
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
-
+    DemoLoginInput:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [STUDENT, MENTOR, HOD, ADMIN]
+    CurrentUser:
+      type: object
+      required: [id, name, email, role, initials]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role:
+          type: string
+          enum: [STUDENT, MENTOR, HOD, ADMIN]
+        initials: { type: string }
+        department: { type: ["string", "null"] }
+    DashboardSummary:
+      type: object
+      required: [overall, totals, subjects, pendingRequests, openIssues, recentActivity, insight]
+      properties:
+        overall:
+          $ref: "#/components/schemas/AttendanceMetric"
+        totals:
+          $ref: "#/components/schemas/AttendanceTotals"
+        subjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubjectAttendance"
+        pendingRequests: { type: number }
+        openIssues: { type: number }
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"
+        insight:
+          $ref: "#/components/schemas/AttendanceInsight"
+    AttendanceMetric:
+      type: object
+      required: [percentage, status, label, present, total, target]
+      properties:
+        percentage: { type: number }
+        status:
+          type: string
+          enum: [SAFE, WARNING, CRITICAL]
+        label: { type: string }
+        present: { type: number }
+        total: { type: number }
+        target: { type: number }
+    AttendanceTotals:
+      type: object
+      required: [present, absent, exempted, late, total]
+      properties:
+        present: { type: number }
+        absent: { type: number }
+        exempted: { type: number }
+        late: { type: number }
+        total: { type: number }
+    SubjectAttendance:
+      type: object
+      required: [id, code, name, teacher, percentage, status, present, total, target, color]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        teacher: { type: string }
+        percentage: { type: number }
+        status:
+          type: string
+          enum: [SAFE, WARNING, CRITICAL]
+        present: { type: number }
+        total: { type: number }
+        target: { type: number }
+        color: { type: string }
+    Activity:
+      type: object
+      required: [id, title, description, time, type]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        time: { type: string }
+        type:
+          type: string
+          enum: [SUCCESS, WARNING, INFO, ISSUE]
+    AttendanceInsight:
+      type: object
+      required: [headline, detail, classesToTarget, canMiss]
+      properties:
+        headline: { type: string }
+        detail: { type: string }
+        classesToTarget: { type: number }
+        canMiss: { type: number }
+    AttendanceRecord:
+      type: object
+      required: [date, subjectId, subjectName, subjectCode, status, detail]
+      properties:
+        date:
+          type: string
+          format: date
+        subjectId: { type: string }
+        subjectName: { type: string }
+        subjectCode: { type: string }
+        status:
+          type: string
+          enum: [PRESENT, ABSENT, EXEMPTED, LATE, NOT_MARKED]
+        detail: { type: string }
+    AttendanceHistoryResponse:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceRecord"
+        page: { type: number }
+        pageSize: { type: number }
+        total: { type: number }
+    TrendPoint:
+      type: object
+      required: [label, percentage]
+      properties:
+        label: { type: string }
+        percentage: { type: number }
+    ExemptionInput:
+      type: object
+      required: [category, reason, startDate, endDate]
+      properties:
+        category:
+          type: string
+          enum: [MEDICAL, COLLEGE_EVENT, OFFICIAL_WORK, SPORTS, COMPETITION, PERSONAL, OTHER]
+        reason: { type: string, minLength: 1 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        proofName: { type: ["string", "null"] }
+    Exemption:
+      allOf:
+        - $ref: "#/components/schemas/ExemptionInput"
+        - type: object
+          required: [id, studentId, studentName, status, submittedAt, reviewedAt, reviewer, reviewerRemarks]
+          properties:
+            id: { type: string }
+            studentId: { type: string }
+            studentName: { type: string }
+            status:
+              type: string
+              enum: [PENDING, APPROVED, REJECTED, CANCELLED]
+            submittedAt: { type: string }
+            reviewedAt: { type: ["string", "null"] }
+            reviewer: { type: ["string", "null"] }
+            reviewerRemarks: { type: ["string", "null"] }
+    ExemptionListResponse:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Exemption"
+        page: { type: number }
+        pageSize: { type: number }
+        total: { type: number }
+    ReviewInput:
+      type: object
+      properties:
+        remarks: { type: string }
+    AttendanceIssueInput:
+      type: object
+      required: [subjectId, subjectName, date, issueType, description]
+      properties:
+        subjectId: { type: string }
+        subjectName: { type: string }
+        date: { type: string, format: date }
+        issueType:
+          type: string
+          enum: [INCORRECTLY_MARKED_ABSENT, INCORRECTLY_MARKED_PRESENT, EXEMPTION_NOT_REFLECTED, WRONG_ATTENDANCE_DATA, OTHER]
+        description: { type: string, minLength: 1 }
+        evidenceName: { type: ["string", "null"] }
+    AttendanceIssue:
+      allOf:
+        - $ref: "#/components/schemas/AttendanceIssueInput"
+        - type: object
+          required: [id, studentId, studentName, status, createdAt, reviewedAt, reviewer, reviewerRemarks]
+          properties:
+            id: { type: string }
+            studentId: { type: string }
+            studentName: { type: string }
+            status:
+              type: string
+              enum: [OPEN, UNDER_REVIEW, RESOLVED, REJECTED, CANCELLED]
+            createdAt: { type: string }
+            reviewedAt: { type: ["string", "null"] }
+            reviewer: { type: ["string", "null"] }
+            reviewerRemarks: { type: ["string", "null"] }
+    IssueResolutionInput:
+      type: object
+      required: [remarks, updateAttendance]
+      properties:
+        remarks: { type: string }
+        updateAttendance: { type: boolean }
+    Notification:
+      type: object
+      required: [id, title, message, type, relatedId, read, createdAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        message: { type: string }
+        type:
+          type: string
+          enum: [SUCCESS, WARNING, INFO, ISSUE]
+        relatedId: { type: ["string", "null"] }
+        read: { type: boolean }
+        createdAt: { type: string }
+    Student:
+      type: object
+      required: [id, name, rollNo, branch, section, percentage, status, pendingRequests, openIssues]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        rollNo: { type: string }
+        branch: { type: string }
+        section: { type: string }
+        percentage: { type: number }
+        status:
+          type: string
+          enum: [SAFE, WARNING, CRITICAL]
+        pendingRequests: { type: number }
+        openIssues: { type: number }
+    StudentProfile:
+      allOf:
+        - $ref: "#/components/schemas/Student"
+        - type: object
+          required: [subjects, exemptions, issues, notifications]
+          properties:
+            subjects:
+              type: array
+              items:
+                $ref: "#/components/schemas/SubjectAttendance"
+            exemptions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Exemption"
+            issues:
+              type: array
+              items:
+                $ref: "#/components/schemas/AttendanceIssue"
+            notifications:
+              type: array
+              items:
+                $ref: "#/components/schemas/Notification"
+    Settings:
+      type: object
+      required: [theme, targetAttendance, notificationsEnabled]
+      properties:
+        theme:
+          type: string
+          enum: [LIGHT, DARK, SYSTEM]
+        targetAttendance: { type: number, minimum: 1, maximum: 100 }
+        notificationsEnabled: { type: boolean }
+    SettingsUpdate:
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [LIGHT, DARK, SYSTEM]
+        targetAttendance: { type: number, minimum: 1, maximum: 100 }
+        notificationsEnabled: { type: boolean }

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Attendance Companion"
+description = "A calm, student-first attendance management app for understanding subject attendance, submitting exemption requests, reporting discrepancies, and tracking academic risk."
+version = "1.0.0"
+id = "artifacts/attendance-companion"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18801
+
+[services.development]
+run = "pnpm --filter @workspace/attendance-companion run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/attendance-companion", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/attendance-companion/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18801"
+BASE_PATH = "/"
