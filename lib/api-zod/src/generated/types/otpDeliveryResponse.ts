@@ -5,8 +5,9 @@
  * Attendance Companion REST API
  * OpenAPI spec version: 0.1.0
  */
-import type { DemoLoginInputRole } from './demoLoginInputRole';
 
-export interface DemoLoginInput {
-  role: DemoLoginInputRole;
+export interface OtpDeliveryResponse {
+  maskedMobile: string;
+  expiresIn: number;
+  resendAvailableIn: number;
 }

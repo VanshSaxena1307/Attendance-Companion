@@ -14,6 +14,8 @@ export type CurrentUser = {
   department: string | null;
 };
 
+export type AuthRole = Exclude<Role, "ADMIN">;
+
 type Subject = {
   id: string;
   code: string;
@@ -89,6 +91,25 @@ const users: CurrentUser[] = [
   { id: "admin-office", name: "Academic Office", email: "admin@attendance.edu", role: "ADMIN", initials: "AO", department: null },
 ];
 
+/**
+ * Development-only identity data until the real identity store is introduced.
+ * These records deliberately map only to existing domain users and are never
+ * enabled in production.
+ */
+const developmentIdentityFixtures: Array<{
+  userId: string;
+  role: AuthRole;
+  identifier: string;
+  mobile: string;
+}> = [
+  { userId: "student-vansh", role: "STUDENT", identifier: "ADM2026CSE001", mobile: "9876543210" },
+  { userId: "student-aman", role: "STUDENT", identifier: "ADM2026CSE002", mobile: "9876543211" },
+  { userId: "mentor-priya", role: "MENTOR", identifier: "FAC-CSE-1042", mobile: "9876543212" },
+  { userId: "hod-rajesh", role: "HOD", identifier: "HOD-CSE-1001", mobile: "9876543213" },
+];
+
+const activeSessions = new Map<string, { userId: string; expiresAt: number }>();
+
 const subjects: Subject[] = [
   { id: "dsa", code: "CSE 204", name: "Data Structures", teacher: "Dr. Ananya Rao", color: "#5B6EE1" },
   { id: "maths", code: "MTH 202", name: "Engineering Mathematics", teacher: "Prof. K. Menon", color: "#4FAF8B" },
@@ -146,24 +167,49 @@ export function getUserById(id: string): CurrentUser | undefined {
   return users.find((user) => user.id === id);
 }
 
-export function getUserFromRequest(req: Request): CurrentUser {
+export function getUserFromRequest(req: Request): CurrentUser | undefined {
   const raw = req.cookies?.ac_session;
   if (typeof raw === "string") {
-    const [id, signature] = raw.split(".");
-    if (id && signature && signature === signSession(id)) {
-      const user = getUserById(id);
-      if (user) return user;
+    const session = activeSessions.get(raw);
+    if (session) {
+      if (session.expiresAt <= Date.now()) {
+        activeSessions.delete(raw);
+      } else {
+        const user = getUserById(session.userId);
+        if (user) return user;
+        activeSessions.delete(raw);
+      }
     }
   }
-  return users[0];
+  return undefined;
 }
 
 export function sessionForUser(id: string): string {
-  return `${id}.${signSession(id)}`;
+  const token = crypto.randomBytes(32).toString("base64url");
+  activeSessions.set(token, { userId: id, expiresAt: Date.now() + numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8) });
+  return token;
 }
 
-function signSession(id: string): string {
-  return crypto.createHmac("sha256", process.env.SESSION_SECRET ?? "attendance-companion-development-secret").update(id).digest("hex");
+export function destroySession(token: unknown): void {
+  if (typeof token === "string") activeSessions.delete(token);
+}
+
+export function sessionMaxAgeMs(): number {
+  return numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8);
+}
+
+export function findDevelopmentIdentity(role: AuthRole, identifier: string, mobile: string): { user: CurrentUser; mobile: string } | undefined {
+  if (process.env.NODE_ENV === "production") return undefined;
+  const normalizedIdentifier = identifier.trim().toUpperCase();
+  const normalizedMobile = mobile.replace(/\D/g, "");
+  const fixture = developmentIdentityFixtures.find((entry) => entry.role === role && entry.identifier === normalizedIdentifier && entry.mobile === normalizedMobile);
+  const user = fixture && getUserById(fixture.userId);
+  return user && fixture ? { user, mobile: fixture.mobile } : undefined;
+}
+
+function numberEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 export function isStaff(user: CurrentUser): boolean {

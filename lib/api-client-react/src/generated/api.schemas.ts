@@ -9,18 +9,40 @@ export interface HealthStatus {
   status: string;
 }
 
-export type DemoLoginInputRole = typeof DemoLoginInputRole[keyof typeof DemoLoginInputRole];
+export type IdentityVerificationInputRole = typeof IdentityVerificationInputRole[keyof typeof IdentityVerificationInputRole];
 
 
-export const DemoLoginInputRole = {
+export const IdentityVerificationInputRole = {
   STUDENT: 'STUDENT',
   MENTOR: 'MENTOR',
   HOD: 'HOD',
-  ADMIN: 'ADMIN',
 } as const;
 
-export interface DemoLoginInput {
-  role: DemoLoginInputRole;
+export interface IdentityVerificationInput {
+  role: IdentityVerificationInputRole;
+  /** @minLength 1 */
+  identifier: string;
+  /** @minLength 7 */
+  mobile: string;
+}
+
+export interface IdentityVerificationResponse {
+  maskedMobile: string;
+  resendAvailableIn: number;
+}
+
+export interface OtpDeliveryResponse {
+  maskedMobile: string;
+  expiresIn: number;
+  resendAvailableIn: number;
+}
+
+export interface OtpVerificationInput {
+  /**
+     * @minLength 6
+     * @maxLength 6
+     */
+  otp: string;
 }
 
 export type CurrentUserRole = typeof CurrentUserRole[keyof typeof CurrentUserRole];

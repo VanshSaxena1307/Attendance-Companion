@@ -10,6 +10,12 @@ out-tsc
 
 # dependencies
 node_modules
+.pnpm-store
+
+# local environment and secrets
+.env
+.env.*
+!.env.example
 
 # IDEs and editors
 /.idea

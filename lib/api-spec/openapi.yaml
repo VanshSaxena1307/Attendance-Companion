@@ -30,24 +30,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /auth/demo-login:
+  /auth/identity:
     post:
-      operationId: demoLogin
+      operationId: verifyIdentity
       tags: [auth]
-      summary: Start a demo session for a role
+      summary: Verify a role-specific identity and create a temporary authentication flow
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/DemoLoginInput"
+              $ref: "#/components/schemas/IdentityVerificationInput"
       responses:
         "200":
-          description: Active session
+          description: Identity verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityVerificationResponse"
+  /auth/send-otp:
+    post:
+      operationId: sendOtp
+      tags: [auth]
+      summary: Send or resend an OTP for the current temporary authentication flow
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtpDeliveryResponse"
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [auth]
+      summary: Verify an OTP and establish an authenticated session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtpVerificationInput"
+      responses:
+        "200":
+          description: Authenticated user
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CurrentUser"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Destroy the current authenticated session
+      responses:
+        "204":
+          description: Logged out
   /me:
     get:
       operationId: getCurrentUser
@@ -436,13 +474,40 @@ components:
       properties:
         status:
           type: string
-    DemoLoginInput:
+    IdentityVerificationInput:
       type: object
-      required: [role]
+      required: [role, identifier, mobile]
       properties:
         role:
           type: string
-          enum: [STUDENT, MENTOR, HOD, ADMIN]
+          enum: [STUDENT, MENTOR, HOD]
+        identifier:
+          type: string
+          minLength: 1
+        mobile:
+          type: string
+          minLength: 7
+    IdentityVerificationResponse:
+      type: object
+      required: [maskedMobile, resendAvailableIn]
+      properties:
+        maskedMobile: { type: string }
+        resendAvailableIn: { type: number }
+    OtpDeliveryResponse:
+      type: object
+      required: [maskedMobile, expiresIn, resendAvailableIn]
+      properties:
+        maskedMobile: { type: string }
+        expiresIn: { type: number }
+        resendAvailableIn: { type: number }
+    OtpVerificationInput:
+      type: object
+      required: [otp]
+      properties:
+        otp:
+          type: string
+          minLength: 6
+          maxLength: 6
     CurrentUser:
       type: object
       required: [id, name, email, role, initials]

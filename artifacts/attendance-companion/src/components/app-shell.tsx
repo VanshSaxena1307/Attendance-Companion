@@ -1,7 +1,8 @@
 import { Bell, BookOpen, ClipboardCheck, FileWarning, Gauge, Lightbulb, LogOut, Menu, Settings2, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import type { CurrentUser } from '@workspace/api-client-react';
+import { getGetCurrentUserQueryKey, logout, type CurrentUser } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 const nav = [
   { href: '/', label: 'Overview', icon: Gauge, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
@@ -16,9 +17,10 @@ const nav = [
 export function AppShell({ user, children }: { user: CurrentUser; children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
   const visible = nav.filter((item) => item.roles.includes(user.role));
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
-  const signOut = () => { localStorage.removeItem('attendance-role'); setLocation('/login'); };
+  const signOut = async () => { await logout(); queryClient.removeQueries({ queryKey: getGetCurrentUserQueryKey() }); setLocation('/login'); };
   return <div className="noise min-h-[100dvh] bg-background">
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="mb-9 flex items-center justify-between px-2">

@@ -6,12 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type DemoLoginInputRole = typeof DemoLoginInputRole[keyof typeof DemoLoginInputRole];
+export type IdentityVerificationInputRole = typeof IdentityVerificationInputRole[keyof typeof IdentityVerificationInputRole];
 
 
-export const DemoLoginInputRole = {
+export const IdentityVerificationInputRole = {
   STUDENT: 'STUDENT',
   MENTOR: 'MENTOR',
   HOD: 'HOD',
-  ADMIN: 'ADMIN',
 } as const;

@@ -17,13 +17,48 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * @summary Start a demo session for a role
+ * @summary Verify a role-specific identity and create a temporary authentication flow
  */
-export const DemoLoginBody = zod.object({
-  "role": zod.enum(['STUDENT', 'MENTOR', 'HOD', 'ADMIN'])
+
+export const verifyIdentityBodyMobileMin = 7;
+
+
+
+export const VerifyIdentityBody = zod.object({
+  "role": zod.enum(['STUDENT', 'MENTOR', 'HOD']),
+  "identifier": zod.string().min(1),
+  "mobile": zod.string().min(verifyIdentityBodyMobileMin)
 })
 
-export const DemoLoginResponse = zod.object({
+export const VerifyIdentityResponse = zod.object({
+  "maskedMobile": zod.string(),
+  "resendAvailableIn": zod.number()
+})
+
+
+/**
+ * @summary Send or resend an OTP for the current temporary authentication flow
+ */
+export const SendOtpResponse = zod.object({
+  "maskedMobile": zod.string(),
+  "expiresIn": zod.number(),
+  "resendAvailableIn": zod.number()
+})
+
+
+/**
+ * @summary Verify an OTP and establish an authenticated session
+ */
+export const verifyOtpBodyOtpMin = 6;
+export const verifyOtpBodyOtpMax = 6;
+
+
+
+export const VerifyOtpBody = zod.object({
+  "otp": zod.string().min(verifyOtpBodyOtpMin).max(verifyOtpBodyOtpMax)
+})
+
+export const VerifyOtpResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
@@ -31,6 +66,12 @@ export const DemoLoginResponse = zod.object({
   "initials": zod.string(),
   "department": zod.string().nullish()
 })
+
+
+/**
+ * @summary Destroy the current authenticated session
+ */
+export const LogoutResponse = zod.void()
 
 
 /**
