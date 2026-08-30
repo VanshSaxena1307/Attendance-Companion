@@ -86,7 +86,7 @@ export type Settings = {
 const users: CurrentUser[] = [
   { id: "student-vansh", name: "Vansh Saxena", email: "vansh@attendance.edu", role: "STUDENT", initials: "VS", department: "Computer Science & Engineering" },
   { id: "student-aman", name: "Varun K. Kumar", email: "aman@attendance.edu", role: "STUDENT", initials: "AS", department: "Computer Science & Engineering" },
-  { id: "mentor-priya", name: "Varun Chaubey", email: "priya.nair@attendance.edu", role: "MENTOR", initials: "PN", department: "Computer Science & Engineering" },
+  { id: "mentor-priya", name: "Varun Chaubey", email: "priya.nair@attendance.edu", role: "MENTOR", initials: "VC", department: "Computer Science & Engineering" },
   { id: "hod-rajesh", name: "Rajesh Mehta", email: "rajesh.mehta@attendance.edu", role: "HOD", initials: "RM", department: "Computer Science & Engineering" },
   { id: "admin-office", name: "Academic Office", email: "admin@attendance.edu", role: "ADMIN", initials: "AO", department: null },
 ];
@@ -111,30 +111,30 @@ const developmentIdentityFixtures: Array<{
 const activeSessions = new Map<string, { userId: string; expiresAt: number }>();
 
 const subjects: Subject[] = [
-  { id: "dsa", code: "CSE 204", name: "Data Structures", teacher: "Dr. Ananya Rao", color: "#5B6EE1" },
-  { id: "maths", code: "MTH 202", name: "Engineering Mathematics", teacher: "Prof. K. Menon", color: "#4FAF8B" },
-  { id: "physics", code: "PHY 201", name: "Applied Physics", teacher: "Dr. R. Iyer", color: "#D99A45" },
-  { id: "electronics", code: "ECE 205", name: "Digital Electronics", teacher: "Prof. S. Gupta", color: "#9A72C7" },
+  { id: "dsa", code: "25CS303", name: "Data Structures", teacher: "Dr. Malvika Gupta", color: "#5B6EE1" },
+  { id: "maths", code: "25AS301", name: "Applied Mathematics", teacher: "Dr. Mahima Pooniya", color: "#4FAF8B" },
+  { id: "OOPS", code: "25CS301", name: "OOPS", teacher: "Dr. Nidhi Yadav", color: "#D99A45" },
+  { id: "OS", code: "25CS302", name: "Operating System", teacher: "Prof. Bharti Shukla", color: "#9A72C7" },
 ];
 
 const attendance: Attendance[] = [
-  { id: "a1", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-21", status: "PRESENT", detail: "Marked present by Dr. Ananya Rao" },
-  { id: "a2", studentId: "student-vansh", subjectId: "maths", date: "2026-08-21", status: "PRESENT", detail: "Marked present by Prof. K. Menon" },
-  { id: "a3", studentId: "student-vansh", subjectId: "physics", date: "2026-08-21", status: "EXEMPTED", detail: "Approved college event exemption" },
-  { id: "a4", studentId: "student-vansh", subjectId: "electronics", date: "2026-08-21", status: "PRESENT", detail: "Marked present by Prof. S. Gupta" },
-  { id: "a5", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-22", status: "PRESENT", detail: "Marked present by Dr. Ananya Rao" },
-  { id: "a6", studentId: "student-vansh", subjectId: "maths", date: "2026-08-22", status: "ABSENT", detail: "Marked absent by Prof. K. Menon" },
-  { id: "a7", studentId: "student-vansh", subjectId: "physics", date: "2026-08-22", status: "PRESENT", detail: "Marked present by Dr. R. Iyer" },
-  { id: "a8", studentId: "student-vansh", subjectId: "electronics", date: "2026-08-22", status: "PRESENT", detail: "Marked present by Prof. S. Gupta" },
-  { id: "a9", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-23", status: "PRESENT", detail: "Marked present by Dr. Ananya Rao" },
-  { id: "a10", studentId: "student-vansh", subjectId: "maths", date: "2026-08-23", status: "PRESENT", detail: "Marked present by Prof. K. Menon" },
-  { id: "a11", studentId: "student-vansh", subjectId: "physics", date: "2026-08-23", status: "PRESENT", detail: "Marked present by Dr. R. Iyer" },
-  { id: "a12", studentId: "student-vansh", subjectId: "electronics", date: "2026-08-23", status: "LATE", detail: "Arrived 8 minutes after class started" },
-  { id: "a13", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-24", status: "ABSENT", detail: "Marked absent by Dr. Ananya Rao" },
-  { id: "a14", studentId: "student-vansh", subjectId: "maths", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Prof. K. Menon" },
-  { id: "a15", studentId: "student-vansh", subjectId: "physics", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. R. Iyer" },
-  { id: "a16", studentId: "student-vansh", subjectId: "electronics", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Prof. S. Gupta" },
-  { id: "a17", studentId: "student-aman", subjectId: "dsa", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. Ananya Rao" },
+  { id: "a1", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-21", status: "PRESENT", detail: "Marked present by Dr. Malvika Gupta" },
+  { id: "a2", studentId: "student-vansh", subjectId: "maths", date: "2026-08-21", status: "PRESENT", detail: "Marked present by Dr. Mahima Pooniya" },
+  { id: "a3", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-21", status: "EXEMPTED", detail: "Approved college event exemption" },
+  { id: "a4", studentId: "student-vansh", subjectId: "OS", date: "2026-08-21", status: "PRESENT", detail: "Marked present by Prof. Bharti Shukla" },
+  { id: "a5", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-22", status: "PRESENT", detail: "Marked present by Dr. Malvika Gupta" },
+  { id: "a6", studentId: "student-vansh", subjectId: "maths", date: "2026-08-22", status: "ABSENT", detail: "Marked absent by Dr. Mahima Pooniya" },
+  { id: "a7", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-22", status: "PRESENT", detail: "Marked present by Dr. Nidhi Yadav" },
+  { id: "a8", studentId: "student-vansh", subjectId: "OS", date: "2026-08-22", status: "PRESENT", detail: "Marked present by Prof. Bharti Shukla" },
+  { id: "a9", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-23", status: "PRESENT", detail: "Marked present by Dr. Malvika Gupta" },
+  { id: "a10", studentId: "student-vansh", subjectId: "maths", date: "2026-08-23", status: "PRESENT", detail: "Marked present by Dr. Mahima Pooniya" },
+  { id: "a11", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-23", status: "PRESENT", detail: "Marked present by Dr. Nidhi Yadav" },
+  { id: "a12", studentId: "student-vansh", subjectId: "OS", date: "2026-08-23", status: "ABSENT", detail: "Marked Absent by Prof. Bharti Shukla" },
+  { id: "a13", studentId: "student-vansh", subjectId: "dsa", date: "2026-08-24", status: "ABSENT", detail: "Marked absent by Dr. Malvika Gupta" },
+  { id: "a14", studentId: "student-vansh", subjectId: "maths", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. Mahima Pooniya" },
+  { id: "a15", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. Nidhi Yadav" },
+  { id: "a16", studentId: "student-vansh", subjectId: "OS", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Prof. Bharti Shukla" },
+  { id: "a17", studentId: "student-aman", subjectId: "dsa", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. Malvika Gupta" },
 ];
 
 let exemptions: Exemption[] = [
@@ -145,12 +145,12 @@ let exemptions: Exemption[] = [
 
 let issues: AttendanceIssue[] = [
   { id: "is-2001", studentId: "student-vansh", studentName: "Vansh Saxena", subjectId: "dsa", subjectName: "Data Structures", date: "2026-08-24", issueType: "INCORRECTLY_MARKED_ABSENT", description: "I was present in the DSA class but was marked absent.", evidenceName: "class-photo.jpg", status: "UNDER_REVIEW", createdAt: "2026-08-24T15:10:00.000Z", reviewedAt: null, reviewer: "Priya Nair", reviewerRemarks: "Checking the class register with the faculty member." },
-  { id: "is-2002", studentId: "student-vansh", studentName: "Vansh Saxena", subjectId: "physics", subjectName: "Applied Physics", date: "2026-08-21", issueType: "EXEMPTION_NOT_REFLECTED", description: "My approved college event exemption is not reflected in the attendance view.", evidenceName: null, status: "OPEN", createdAt: "2026-08-22T11:00:00.000Z", reviewedAt: null, reviewer: null, reviewerRemarks: null },
+  { id: "is-2002", studentId: "student-vansh", studentName: "Vansh Saxena", subjectId: "OOPS", subjectName: "OOPS", date: "2026-08-21", issueType: "EXEMPTION_NOT_REFLECTED", description: "My approved college event exemption is not reflected in the attendance view.", evidenceName: null, status: "OPEN", createdAt: "2026-08-22T11:00:00.000Z", reviewedAt: null, reviewer: null, reviewerRemarks: null },
 ];
 
 let notifications: AppNotification[] = [
   { id: "n-1", recipientId: "student-vansh", title: "Exemption approved", message: "Your college event request for 21 Aug is now approved.", type: "SUCCESS", relatedId: "ex-1001", read: false, createdAt: "2026-08-19T13:20:00.000Z" },
-  { id: "n-2", recipientId: "student-vansh", title: "Attendance needs attention", message: "Applied Physics is at 76%. Attend the next class to stay on track.", type: "WARNING", relatedId: "physics", read: false, createdAt: "2026-08-23T08:00:00.000Z" },
+  { id: "n-2", recipientId: "student-vansh", title: "Attendance needs attention", message: "Applied Mathematics is at 76%. Attend the next class to stay on track.", type: "WARNING", relatedId: "OOPS", read: false, createdAt: "2026-08-23T08:00:00.000Z" },
   { id: "n-3", recipientId: "student-vansh", title: "Issue under review", message: "Your Data Structures attendance report is being reviewed by your mentor.", type: "INFO", relatedId: "is-2001", read: true, createdAt: "2026-08-24T15:15:00.000Z" },
 ];
 
@@ -260,7 +260,7 @@ export function getDashboard(studentId: string, target = 75) {
     openIssues,
     recentActivity: [
       { id: "activity-1", title: "Exemption approved", description: "College event request was approved by your mentor.", time: "2 days ago", type: "SUCCESS" as const },
-      { id: "activity-2", title: "Physics needs attention", description: "Your subject attendance moved into the warning range.", time: "4 days ago", type: "WARNING" as const },
+      { id: "activity-2", title: "OOPS needs attention", description: "Your subject attendance moved into the warning range.", time: "4 days ago", type: "WARNING" as const },
       { id: "activity-3", title: "Issue under review", description: "Your DSA attendance report is with Priya Nair.", time: "5 days ago", type: "INFO" as const },
     ],
     insight: {
