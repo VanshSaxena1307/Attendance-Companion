@@ -85,8 +85,8 @@ export type Settings = {
 
 const users: CurrentUser[] = [
   { id: "student-vansh", name: "Vansh Saxena", email: "vansh@attendance.edu", role: "STUDENT", initials: "VS", department: "Computer Science & Engineering" },
-  { id: "student-aman", name: "Aman Sharma", email: "aman@attendance.edu", role: "STUDENT", initials: "AS", department: "Computer Science & Engineering" },
-  { id: "mentor-priya", name: "Priya Nair", email: "priya.nair@attendance.edu", role: "MENTOR", initials: "PN", department: "Computer Science & Engineering" },
+  { id: "student-aman", name: "Varun K. Kumar", email: "aman@attendance.edu", role: "STUDENT", initials: "AS", department: "Computer Science & Engineering" },
+  { id: "mentor-priya", name: "Varun Chaubey", email: "priya.nair@attendance.edu", role: "MENTOR", initials: "PN", department: "Computer Science & Engineering" },
   { id: "hod-rajesh", name: "Rajesh Mehta", email: "rajesh.mehta@attendance.edu", role: "HOD", initials: "RM", department: "Computer Science & Engineering" },
   { id: "admin-office", name: "Academic Office", email: "admin@attendance.edu", role: "ADMIN", initials: "AO", department: null },
 ];
@@ -102,10 +102,10 @@ const developmentIdentityFixtures: Array<{
   identifier: string;
   mobile: string;
 }> = [
-  { userId: "student-vansh", role: "STUDENT", identifier: "ADM2026CSE001", mobile: "9876543210" },
+  { userId: "student-vansh", role: "STUDENT", identifier: "2025B01010066", mobile: "9012562896" },
   { userId: "student-aman", role: "STUDENT", identifier: "ADM2026CSE002", mobile: "9876543211" },
-  { userId: "mentor-priya", role: "MENTOR", identifier: "FAC-CSE-1042", mobile: "9876543212" },
-  { userId: "hod-rajesh", role: "HOD", identifier: "HOD-CSE-1001", mobile: "9876543213" },
+  { userId: "mentor-priya", role: "MENTOR", identifier: "2025B01010452", mobile: "7827624547" },
+  { userId: "hod-rajesh", role: "HOD", identifier: "HOD-CSE-1001", mobile: "9012562896" },
 ];
 
 const activeSessions = new Map<string, { userId: string; expiresAt: number }>();
