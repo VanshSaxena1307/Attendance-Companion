@@ -135,6 +135,14 @@ const attendance: Attendance[] = [
   { id: "a15", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. Nidhi Yadav" },
   { id: "a16", studentId: "student-vansh", subjectId: "OS", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Prof. Bharti Shukla" },
   { id: "a17", studentId: "student-aman", subjectId: "dsa", date: "2026-08-24", status: "PRESENT", detail: "Marked present by Dr. Malvika Gupta" },
+  { id: "a18", studentId: "student-vansh", subjectId: "maths", date: "2026-08-20", status: "PRESENT", detail: "Marked present by Dr. Mahima Pooniya" },
+  { id: "a19", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-20", status: "PRESENT", detail: "Marked present by Dr. Nidhi Yadav" },
+  { id: "a20", studentId: "student-vansh", subjectId: "OS", date: "2026-08-20", status: "PRESENT", detail: "Marked present by Prof. Bharti Shukla" },
+  { id: "a21", studentId: "student-vansh", subjectId: "OOPS", date: "2026-08-19", status: "ABSENT", detail: "Marked present by Dr. Nidhi Yadav" },
+  { id: "a22", studentId: "student-vansh", subjectId: "OS", date: "2026-08-19", status: "ABSENT", detail: "Marked present by Prof. Bharti Shukla" },
+  { id: "a23", studentId: "student-aman", subjectId: "dsa", date: "2026-08-20", status: "PRESENT", detail: "Marked present by Dr. Malvika Gupta" },
+  { id: "a24", studentId: "student-vansh", subjectId: "maths", date: "2026-08-19", status: "PRESENT", detail: "Marked present by Dr. Mahima Pooniya" },
+  
 ];
 
 let exemptions: Exemption[] = [
