@@ -11,9 +11,13 @@ import {
   RejectAttendanceIssueResponse, RejectExemptionBody, RejectExemptionParams, RejectExemptionResponse,
   ResolveAttendanceIssueBody, ResolveAttendanceIssueParams, ResolveAttendanceIssueResponse,
   UpdateSettingsBody, UpdateSettingsResponse,
+  GetTeacherAssignmentsResponse, GetTeacherSectionStudentsParams, GetTeacherSectionStudentsQueryParams,
+  GetTeacherSectionStudentsResponse, GetTeacherAttendanceQueryParams, GetTeacherAttendanceResponse,
+  SubmitTeacherAttendanceBody, SubmitTeacherAttendanceResponse,
 } from "@workspace/api-zod";
 import { getUserFromRequest, sessionForUser, sessionMaxAgeMs, destroySession, findDevelopmentIdentity, isStaff, getDashboard, getSubjects, getHistory, getTrend, getExemptionsFor, getIssuesFor, getNotificationsFor, createExemption, reviewExemption, createIssue, reviewIssue, getSettings, updateSettings, getStudentSummaries, getStudentProfile, type AuthRole, type CurrentUser } from "../lib/attendance-domain";
 import { AuthError, createAuthFlow, destroyAuthFlow, maskMobile, sendOtp, verifyOtp } from "../lib/authentication";
+import * as teacherAttendance from "../lib/postgres-attendance-repository";
 
 const router: IRouter = Router();
 const staffOnly = (req: Request, res: Response): boolean => {
@@ -27,10 +31,10 @@ const staffOnly = (req: Request, res: Response): boolean => {
 
 const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/" };
 
-router.post("/auth/identity", (req, res): void => {
+router.post("/auth/identity", async (req, res): Promise<void> => {
   const parsed = VerifyIdentityBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const identity = findDevelopmentIdentity(parsed.data.role as AuthRole, parsed.data.identifier, parsed.data.mobile);
+  const identity = await findDevelopmentIdentity(parsed.data.role as AuthRole, parsed.data.identifier, parsed.data.mobile);
   if (!identity) { res.status(401).json({ error: "We could not verify that identity and registered mobile number." }); return; }
   const flowToken = createAuthFlow(identity.user, parsed.data.role as AuthRole, identity.mobile);
   res.cookie("ac_auth_flow", flowToken, { ...cookieOptions, maxAge: 1000 * 60 * 15 });
@@ -53,7 +57,7 @@ router.post("/auth/verify-otp", (req, res): void => {
     const user = verifyOtp(req.cookies?.ac_auth_flow, parsed.data.otp);
     destroyAuthFlow(req.cookies?.ac_auth_flow);
     res.clearCookie("ac_auth_flow", cookieOptions);
-    res.cookie("ac_session", sessionForUser(user.id), { ...cookieOptions, maxAge: sessionMaxAgeMs() });
+    res.cookie("ac_session", sessionForUser(user), { ...cookieOptions, maxAge: sessionMaxAgeMs() });
     res.json(VerifyOtpResponse.parse(user));
   } catch (error) {
     sendAuthError(res, error);
@@ -81,30 +85,75 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get("/dashboard/summary", (req, res): void => {
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const user = res.locals.user as CurrentUser;
-  const data = GetDashboardSummaryResponse.parse(getDashboard(user.role === "STUDENT" ? user.id : "student-vansh", getSettings(user.id).targetAttendance));
+  const data = GetDashboardSummaryResponse.parse(await getDashboard(user.role === "STUDENT" ? user.id : "student-vansh", getSettings(user.id).targetAttendance));
   res.json(data);
 });
 
-router.get("/attendance/subjects", (req, res): void => {
+router.get("/attendance/subjects", async (req, res): Promise<void> => {
   const user = res.locals.user as CurrentUser;
-  res.json(GetSubjectAttendanceResponse.parse(getSubjects(user.role === "STUDENT" ? user.id : "student-vansh", getSettings(user.id).targetAttendance)));
+  res.json(GetSubjectAttendanceResponse.parse(await getSubjects(user.role === "STUDENT" ? user.id : "student-vansh", getSettings(user.id).targetAttendance)));
 });
 
-router.get("/attendance/history", (req, res): void => {
+router.get("/attendance/history", async (req, res): Promise<void> => {
   const query = GetAttendanceHistoryQueryParams.safeParse(req.query);
   if (!query.success) { res.status(400).json({ error: query.error.message }); return; }
   const user = res.locals.user as CurrentUser;
   const filters = { subject: query.data.subject, status: query.data.status, from: query.data.from?.toISOString().slice(0, 10), to: query.data.to?.toISOString().slice(0, 10) };
-  const all = getHistory(user.role === "STUDENT" ? user.id : "student-vansh", filters);
+  const all = await getHistory(user.role === "STUDENT" ? user.id : "student-vansh", filters);
   const start = (query.data.page - 1) * query.data.pageSize;
   res.json(GetAttendanceHistoryResponse.parse({ items: all.slice(start, start + query.data.pageSize), page: query.data.page, pageSize: query.data.pageSize, total: all.length }));
 });
 
-router.get("/attendance/trend", (req, res): void => {
+router.get("/attendance/trend", async (req, res): Promise<void> => {
   const user = res.locals.user as CurrentUser;
-  res.json(GetAttendanceTrendResponse.parse(getTrend(user.role === "STUDENT" ? user.id : "student-vansh")));
+  res.json(GetAttendanceTrendResponse.parse(await getTrend(user.role === "STUDENT" ? user.id : "student-vansh")));
+});
+
+const mentorOnly = (res: Response): CurrentUser | undefined => {
+  const user = res.locals.user as CurrentUser;
+  if (user.role !== "MENTOR") { res.status(403).json({ error: "This action requires an assigned mentor." }); return undefined; }
+  return user;
+};
+const isoDate = (value: Date): string => value.toISOString().slice(0, 10);
+
+router.get("/teacher/assignments", async (_req, res): Promise<void> => {
+  const teacher = mentorOnly(res); if (!teacher) return;
+  res.json(GetTeacherAssignmentsResponse.parse(await teacherAttendance.getTeacherAssignments(teacher.id)));
+});
+
+router.get("/teacher/sections/:sectionId/students", async (req, res): Promise<void> => {
+  const teacher = mentorOnly(res); if (!teacher) return;
+  const params = GetTeacherSectionStudentsParams.safeParse(req.params);
+  const query = GetTeacherSectionStudentsQueryParams.safeParse(req.query);
+  if (!params.success || !query.success) { res.status(400).json({ error: "A valid sectionId and subjectId are required." }); return; }
+  const students = await teacherAttendance.getTeacherStudents(teacher.id, query.data.subjectId, params.data.sectionId);
+  if (!students) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
+  res.json(GetTeacherSectionStudentsResponse.parse(students));
+});
+
+router.get("/teacher/attendance", async (req, res): Promise<void> => {
+  const teacher = mentorOnly(res); if (!teacher) return;
+  const query = GetTeacherAttendanceQueryParams.safeParse(req.query);
+  if (!query.success) { res.status(400).json({ error: "subjectId, sectionId, and a YYYY-MM-DD date are required." }); return; }
+  const attendance = await teacherAttendance.getTeacherAttendance(teacher.id, query.data.subjectId, query.data.sectionId, isoDate(query.data.date));
+  if (!attendance) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
+  res.json(GetTeacherAttendanceResponse.parse(attendance));
+});
+
+router.put("/teacher/attendance", async (req, res): Promise<void> => {
+  const teacher = mentorOnly(res); if (!teacher) return;
+  const body = SubmitTeacherAttendanceBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: "Invalid attendance submission." }); return; }
+  try {
+    const attendance = await teacherAttendance.submitTeacherAttendance(teacher.id, { ...body.data, date: isoDate(body.data.date) });
+    if (!attendance) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
+    res.json(SubmitTeacherAttendanceResponse.parse(attendance));
+  } catch (error) {
+    if (error instanceof teacherAttendance.TeacherInputError) { res.status(400).json({ error: error.message }); return; }
+    throw error;
+  }
 });
 
 router.get("/exemptions", (req, res): void => {
@@ -197,17 +246,17 @@ router.post("/notifications/read-all", (req, res): void => {
   res.json(MarkAllNotificationsReadResponse.parse(items));
 });
 
-router.get("/students", (req, res): void => {
+router.get("/students", async (req, res): Promise<void> => {
   if (!staffOnly(req, res)) return;
   const query = GetStudentsQueryParams.safeParse(req.query);
   if (!query.success) { res.status(400).json({ error: query.error.message }); return; }
-  const items = getStudentSummaries(getSettings((res.locals.user as CurrentUser).id).targetAttendance)
+  const items = (await getStudentSummaries(getSettings((res.locals.user as CurrentUser).id).targetAttendance))
     .filter((item) => !query.data.search || item.name.toLowerCase().includes(query.data.search.toLowerCase()) || item.rollNo.toLowerCase().includes(query.data.search.toLowerCase()))
     .filter((item) => !query.data.risk || item.status === query.data.risk);
   res.json(GetStudentsResponse.parse(items));
 });
 
-router.get("/students/:id", (req, res): void => {
+router.get("/students/:id", async (req, res): Promise<void> => {
   const params = GetStudentParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const user = res.locals.user as CurrentUser;
@@ -220,7 +269,7 @@ router.get("/students/:id", (req, res): void => {
     res.status(403).json({ error: "This action requires a mentor, HOD, or admin role." });
     return;
   }
-  const profile = getStudentProfile(requestedId, getSettings(user.id).targetAttendance);
+  const profile = await getStudentProfile(requestedId, getSettings(user.id).targetAttendance);
   if (!profile) { res.status(404).json({ error: "Student not found." }); return; }
   res.json(GetStudentResponse.parse(profile));
 });

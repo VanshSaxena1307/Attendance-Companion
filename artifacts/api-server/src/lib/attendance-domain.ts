@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import crypto from "node:crypto";
+import * as postgresAttendance from "./postgres-attendance-repository";
 
 export type Role = "STUDENT" | "MENTOR" | "HOD" | "ADMIN";
 export type Risk = "SAFE" | "WARNING" | "CRITICAL";
@@ -108,7 +109,10 @@ const developmentIdentityFixtures: Array<{
   { userId: "hod-rajesh", role: "HOD", identifier: "HOD-CSE-1001", mobile: "9012562896" },
 ];
 
-const activeSessions = new Map<string, { userId: string; expiresAt: number }>();
+// Session state holds the identity established by the OTP flow.  Development
+// teachers come from PostgreSQL rather than the legacy fixture list, so a
+// session must not attempt to resolve them back through that list.
+const activeSessions = new Map<string, { user: CurrentUser; expiresAt: number }>();
 
 const subjects: Subject[] = [
   { id: "dsa", code: "25CS303", name: "Data Structures", teacher: "Dr. Malvika Gupta", color: "#5B6EE1" },
@@ -183,18 +187,16 @@ export function getUserFromRequest(req: Request): CurrentUser | undefined {
       if (session.expiresAt <= Date.now()) {
         activeSessions.delete(raw);
       } else {
-        const user = getUserById(session.userId);
-        if (user) return user;
-        activeSessions.delete(raw);
+        return session.user;
       }
     }
   }
   return undefined;
 }
 
-export function sessionForUser(id: string): string {
+export function sessionForUser(user: CurrentUser): string {
   const token = crypto.randomBytes(32).toString("base64url");
-  activeSessions.set(token, { userId: id, expiresAt: Date.now() + numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8) });
+  activeSessions.set(token, { user, expiresAt: Date.now() + numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8) });
   return token;
 }
 
@@ -206,8 +208,12 @@ export function sessionMaxAgeMs(): number {
   return numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8);
 }
 
-export function findDevelopmentIdentity(role: AuthRole, identifier: string, mobile: string): { user: CurrentUser; mobile: string } | undefined {
+export async function findDevelopmentIdentity(role: AuthRole, identifier: string, mobile: string): Promise<{ user: CurrentUser; mobile: string } | undefined> {
   if (process.env.NODE_ENV === "production") return undefined;
+  if (role === "MENTOR") {
+    const user = await postgresAttendance.findDevelopmentMentor(identifier, mobile);
+    return user ? { user, mobile: mobile.replace(/\D/g, "") } : undefined;
+  }
   const normalizedIdentifier = identifier.trim().toUpperCase();
   const normalizedMobile = mobile.replace(/\D/g, "");
   const fixture = developmentIdentityFixtures.find((entry) => entry.role === role && entry.identifier === normalizedIdentifier && entry.mobile === normalizedMobile);
@@ -224,46 +230,25 @@ export function isStaff(user: CurrentUser): boolean {
   return user.role !== "STUDENT";
 }
 
-export function getSubjects(studentId: string, target = 75) {
-  return subjects.map((subject) => {
-    const records = attendance.filter((record) => record.studentId === studentId && record.subjectId === subject.id);
-    const present = records.filter((record) => record.status === "PRESENT" || record.status === "LATE" || record.status === "EXEMPTED").length;
-    const total = records.length;
-    const percentage = total ? Math.round((present / total) * 1000) / 10 : 0;
-    return { ...subject, percentage, status: riskFor(percentage, target), present, total, target };
-  });
+export async function getSubjects(studentId: string, target = 75) {
+  return postgresAttendance.getSubjectAttendance(studentId, target);
 }
 
-export function getHistory(studentId: string, filters: { subject?: string; status?: RecordStatus; from?: string; to?: string }) {
-  return attendance
-    .filter((record) => record.studentId === studentId)
-    .filter((record) => !filters.subject || record.subjectId === filters.subject)
-    .filter((record) => !filters.status || record.status === filters.status)
-    .filter((record) => !filters.from || record.date >= filters.from)
-    .filter((record) => !filters.to || record.date <= filters.to)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .map((record) => {
-      const subject = subjects.find((item) => item.id === record.subjectId)!;
-      return { date: record.date, subjectId: record.subjectId, subjectName: subject.name, subjectCode: subject.code, status: record.status, detail: record.detail };
-    });
+export async function getHistory(studentId: string, filters: { subject?: string; status?: RecordStatus; from?: string; to?: string }) {
+  return postgresAttendance.getAttendanceHistory(studentId, filters);
 }
 
-export function getDashboard(studentId: string, target = 75) {
-  const records = attendance.filter((record) => record.studentId === studentId);
-  const present = records.filter((record) => record.status === "PRESENT" || record.status === "LATE" || record.status === "EXEMPTED").length;
-  const absent = records.filter((record) => record.status === "ABSENT").length;
-  const exempted = records.filter((record) => record.status === "EXEMPTED").length;
-  const late = records.filter((record) => record.status === "LATE").length;
-  const total = records.length;
-  const percentage = total ? Math.round((present / total) * 1000) / 10 : 0;
+export async function getDashboard(studentId: string, target = 75) {
+  const metrics = await postgresAttendance.getAttendanceMetrics(studentId, target);
+  const { present, total, percentage } = metrics.overall;
   const pendingRequests = exemptions.filter((item) => item.studentId === studentId && item.status === "PENDING").length;
   const openIssues = issues.filter((item) => item.studentId === studentId && ["OPEN", "UNDER_REVIEW"].includes(item.status)).length;
   const canMiss = Math.max(0, Math.floor(present / (target / 100) - total));
   const classesToTarget = percentage >= target ? 0 : Math.ceil((target * total / 100 - present) / (1 - target / 100));
   return {
-    overall: { percentage, status: riskFor(percentage, target), label: labelFor(percentage, target), present, total, target },
-    totals: { present, absent, exempted, late, total },
-    subjects: getSubjects(studentId, target),
+    overall: { ...metrics.overall, label: labelFor(percentage, target) },
+    totals: metrics.totals,
+    subjects: metrics.subjects,
     pendingRequests,
     openIssues,
     recentActivity: [
@@ -293,17 +278,8 @@ function labelFor(percentage: number, target: number): string {
   return "Safe";
 }
 
-export function getTrend(studentId: string) {
-  const points = [
-    { label: "Aug 05", percentage: 83.2 },
-    { label: "Aug 09", percentage: 84.7 },
-    { label: "Aug 13", percentage: 86.1 },
-    { label: "Aug 17", percentage: 85.4 },
-    { label: "Aug 21", percentage: 87.4 },
-    { label: "Aug 25", percentage: 87.1 },
-  ];
-  if (studentId !== "student-vansh") return points.map((point) => ({ ...point, percentage: point.percentage - 4 }));
-  return points;
+export async function getTrend(studentId: string) {
+  return postgresAttendance.getAttendanceTrend(studentId);
 }
 
 export function getExemptionsFor(user: CurrentUser): Exemption[] {
@@ -379,16 +355,15 @@ export function getSubjectsList() {
   return subjects;
 }
 
-export function getStudentSummaries(target = 75) {
-  return users.filter((user) => user.role === "STUDENT").map((user) => {
-    const dashboard = getDashboard(user.id, target);
-    return { id: user.id, name: user.name, rollNo: user.id === "student-vansh" ? "CSE/35/042" : "CSE/35/018", branch: "CSE", section: "35", percentage: dashboard.overall.percentage, status: dashboard.overall.status, pendingRequests: dashboard.pendingRequests, openIssues: dashboard.openIssues };
-  });
+export async function getStudentSummaries(target = 75) {
+  const students = await postgresAttendance.getStudentSummaries(target);
+  return students.map((student) => ({ ...student, pendingRequests: exemptions.filter((item) => item.studentId === student.id && item.status === "PENDING").length, openIssues: issues.filter((item) => item.studentId === student.id && ["OPEN", "UNDER_REVIEW"].includes(item.status)).length }));
 }
 
-export function getStudentProfile(id: string, target = 75) {
-  const user = getUserById(id);
-  if (!user || user.role !== "STUDENT") return undefined;
-  const summary = getStudentSummaries(target).find((student) => student.id === id)!;
-  return { ...summary, subjects: getSubjects(id, target), exemptions: exemptions.filter((item) => item.studentId === id), issues: issues.filter((item) => item.studentId === id), notifications: notifications.filter((item) => item.recipientId === id) };
+export async function getStudentProfile(id: string, target = 75) {
+  const student = await postgresAttendance.getStudentContext(id);
+  if (!student) return undefined;
+  const summaries = await getStudentSummaries(target);
+  const summary = summaries.find((item) => item.id === id);
+  return summary && { ...summary, subjects: await getSubjects(id, target), exemptions: exemptions.filter((item) => item.studentId === id), issues: issues.filter((item) => item.studentId === id), notifications: notifications.filter((item) => item.recipientId === id) };
 }

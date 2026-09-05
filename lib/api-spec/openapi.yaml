@@ -425,6 +425,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentProfile"
+  /teacher/assignments:
+    get:
+      operationId: getTeacherAssignments
+      tags: [attendance]
+      responses:
+        "200": { description: Assigned subject-sections, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TeacherAssignment" } } } } }
+  /teacher/sections/{sectionId}/students:
+    get:
+      operationId: getTeacherSectionStudents
+      tags: [attendance]
+      parameters:
+        - name: sectionId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: subjectId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Enrolled students, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TeacherStudent" } } } } }
+  /teacher/attendance:
+    get:
+      operationId: getTeacherAttendance
+      tags: [attendance]
+      parameters:
+        - name: subjectId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: sectionId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200": { description: Existing class attendance, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TeacherAttendanceRecord" } } } } }
+    put:
+      operationId: submitTeacherAttendance
+      tags: [attendance]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TeacherAttendanceSubmission" } } }
+      responses:
+        "200": { description: Saved class attendance, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TeacherAttendanceRecord" } } } } }
   /settings:
     get:
       operationId: getSettings
@@ -468,6 +516,45 @@ components:
       schema:
         type: string
   schemas:
+    TeacherAssignment:
+      type: object
+      required: [subjectId, subjectCode, subjectName, sectionId, sectionCode, subjectType]
+      properties:
+        subjectId: { type: string }
+        subjectCode: { type: string }
+        subjectName: { type: string }
+        sectionId: { type: string }
+        sectionCode: { type: string }
+        subjectType: { type: string }
+    TeacherStudent:
+      type: object
+      required: [id, name, rollNo, admissionNo]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        rollNo: { type: string }
+        admissionNo: { type: string }
+    TeacherAttendanceRecord:
+      type: object
+      required: [studentId, status, markedAt]
+      properties:
+        studentId: { type: string }
+        status: { type: string, enum: [PRESENT, ABSENT] }
+        markedAt: { type: string, format: date-time }
+    TeacherAttendanceEntry:
+      type: object
+      required: [studentId, status]
+      properties:
+        studentId: { type: string }
+        status: { type: string, enum: [PRESENT, ABSENT] }
+    TeacherAttendanceSubmission:
+      type: object
+      required: [subjectId, sectionId, date, attendance]
+      properties:
+        subjectId: { type: string }
+        sectionId: { type: string }
+        date: { type: string, format: date }
+        attendance: { type: array, items: { $ref: "#/components/schemas/TeacherAttendanceEntry" } }
     HealthStatus:
       type: object
       required: [status]

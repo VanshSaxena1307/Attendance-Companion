@@ -22,8 +22,7 @@ export default defineConfig({
       },
     },
     output: {
-      workspace: apiClientReactSrc,
-      target: "generated",
+      target: "../api-client-react/src/generated/api.ts",
       client: "react-query",
       mode: "split",
       baseUrl: "/api",
@@ -34,7 +33,7 @@ export default defineConfig({
           includeHttpResponseReturnType: false,
         },
         mutator: {
-          path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
+          path: "../api-client-react/src/custom-fetch.ts",
           name: "customFetch",
         },
       },

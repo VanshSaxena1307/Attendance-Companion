@@ -622,6 +622,66 @@ export const GetStudentResponse = zod.object({
 }))
 
 
+export const GetTeacherAssignmentsResponseItem = zod.object({
+  "subjectId": zod.string(),
+  "subjectCode": zod.string(),
+  "subjectName": zod.string(),
+  "sectionId": zod.string(),
+  "sectionCode": zod.string(),
+  "subjectType": zod.string()
+})
+export const GetTeacherAssignmentsResponse = zod.array(GetTeacherAssignmentsResponseItem)
+
+
+export const GetTeacherSectionStudentsParams = zod.object({
+  "sectionId": zod.coerce.string()
+})
+
+export const GetTeacherSectionStudentsQueryParams = zod.object({
+  "subjectId": zod.coerce.string()
+})
+
+export const GetTeacherSectionStudentsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "rollNo": zod.string(),
+  "admissionNo": zod.string()
+})
+export const GetTeacherSectionStudentsResponse = zod.array(GetTeacherSectionStudentsResponseItem)
+
+
+export const GetTeacherAttendanceQueryParams = zod.object({
+  "subjectId": zod.coerce.string(),
+  "sectionId": zod.coerce.string(),
+  "date": zod.date()
+})
+
+export const GetTeacherAttendanceResponseItem = zod.object({
+  "studentId": zod.string(),
+  "status": zod.enum(['PRESENT', 'ABSENT']),
+  "markedAt": zod.coerce.date()
+})
+export const GetTeacherAttendanceResponse = zod.array(GetTeacherAttendanceResponseItem)
+
+
+export const SubmitTeacherAttendanceBody = zod.object({
+  "subjectId": zod.string(),
+  "sectionId": zod.string(),
+  "date": zod.coerce.date(),
+  "attendance": zod.array(zod.object({
+  "studentId": zod.string(),
+  "status": zod.enum(['PRESENT', 'ABSENT'])
+}))
+})
+
+export const SubmitTeacherAttendanceResponseItem = zod.object({
+  "studentId": zod.string(),
+  "status": zod.enum(['PRESENT', 'ABSENT']),
+  "markedAt": zod.coerce.date()
+})
+export const SubmitTeacherAttendanceResponse = zod.array(SubmitTeacherAttendanceResponseItem)
+
+
 /**
  * @summary Get appearance and attendance policy settings
  */

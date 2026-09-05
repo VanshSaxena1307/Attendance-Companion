@@ -5,6 +5,56 @@
  * Attendance Companion REST API
  * OpenAPI spec version: 0.1.0
  */
+export interface TeacherAssignment {
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  sectionId: string;
+  sectionCode: string;
+  subjectType: string;
+}
+
+export interface TeacherStudent {
+  id: string;
+  name: string;
+  rollNo: string;
+  admissionNo: string;
+}
+
+export type TeacherAttendanceRecordStatus = typeof TeacherAttendanceRecordStatus[keyof typeof TeacherAttendanceRecordStatus];
+
+
+export const TeacherAttendanceRecordStatus = {
+  PRESENT: 'PRESENT',
+  ABSENT: 'ABSENT',
+} as const;
+
+export interface TeacherAttendanceRecord {
+  studentId: string;
+  status: TeacherAttendanceRecordStatus;
+  markedAt: string;
+}
+
+export type TeacherAttendanceEntryStatus = typeof TeacherAttendanceEntryStatus[keyof typeof TeacherAttendanceEntryStatus];
+
+
+export const TeacherAttendanceEntryStatus = {
+  PRESENT: 'PRESENT',
+  ABSENT: 'ABSENT',
+} as const;
+
+export interface TeacherAttendanceEntry {
+  studentId: string;
+  status: TeacherAttendanceEntryStatus;
+}
+
+export interface TeacherAttendanceSubmission {
+  subjectId: string;
+  sectionId: string;
+  date: string;
+  attendance: TeacherAttendanceEntry[];
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -457,4 +507,14 @@ export const GetStudentsRisk = {
   WARNING: 'WARNING',
   CRITICAL: 'CRITICAL',
 } as const;
+
+export type GetTeacherSectionStudentsParams = {
+subjectId: string;
+};
+
+export type GetTeacherAttendanceParams = {
+subjectId: string;
+sectionId: string;
+date: string;
+};
 
