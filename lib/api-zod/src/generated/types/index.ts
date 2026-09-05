@@ -36,6 +36,7 @@ export * from './getExemptionsStatus';
 export * from './getStudentsParams';
 export * from './getStudentsRisk';
 export * from './getTeacherAttendanceParams';
+export * from './getTeacherSectionStudentsParams';
 export * from './healthStatus';
 export * from './identityVerificationInput';
 export * from './identityVerificationInputRole';
