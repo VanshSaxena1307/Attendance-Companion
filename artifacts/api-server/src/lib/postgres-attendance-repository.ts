@@ -126,6 +126,39 @@ export async function findDevelopmentMentor(teacherCode: string, mobile: string)
   return { id: teacher.id, name: teacher.name, email: teacher.email ?? "", role: "MENTOR" as const, initials: teacher.initials, department: teacher.department };
 }
 
+export async function findDevelopmentStudent(admissionNo: string, mobile: string) {
+  const normalizedAdmissionNo = admissionNo?.trim().toUpperCase();
+  const normalizedMobile = mobile?.replace(/\D/g, "");
+  if (!normalizedAdmissionNo || !normalizedMobile) return undefined;
+
+  const [student] = await db.select({
+    id: studentsTable.id,
+    name: usersTable.name,
+    email: usersTable.email,
+    role: usersTable.role,
+    initials: usersTable.initials,
+    department: usersTable.department,
+    mobile: studentsTable.mobile,
+  })
+    .from(studentsTable)
+    .innerJoin(usersTable, eq(usersTable.id, studentsTable.id))
+    .where(eq(studentsTable.admissionNo, normalizedAdmissionNo));
+
+  if (!student || student.role !== "STUDENT") return undefined;
+  const dbMobile = student.mobile?.replace(/\D/g, "");
+  if (!dbMobile || dbMobile !== normalizedMobile) return undefined;
+
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email ?? "",
+    role: "STUDENT" as const,
+    initials: student.initials,
+    department: student.department,
+  };
+}
+
+
 export async function getTeacherAssignments(teacherId: string) {
   return db.select({ subjectId: subjectsTable.id, subjectCode: subjectsTable.code, subjectName: subjectsTable.name, sectionId: sectionsTable.id, sectionCode: sectionsTable.code, subjectType: teacherSubjectSectionsTable.subjectType })
     .from(teacherSubjectSectionsTable)

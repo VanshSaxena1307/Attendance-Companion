@@ -208,10 +208,18 @@ export function sessionMaxAgeMs(): number {
   return numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8);
 }
 
+export async function findDevelopmentStudent(admissionNo: string, mobile: string): Promise<CurrentUser | undefined> {
+  return postgresAttendance.findDevelopmentStudent(admissionNo, mobile);
+}
+
 export async function findDevelopmentIdentity(role: AuthRole, identifier: string, mobile: string): Promise<{ user: CurrentUser; mobile: string } | undefined> {
   if (process.env.NODE_ENV === "production") return undefined;
   if (role === "MENTOR") {
     const user = await postgresAttendance.findDevelopmentMentor(identifier, mobile);
+    return user ? { user, mobile: mobile.replace(/\D/g, "") } : undefined;
+  }
+  if (role === "STUDENT") {
+    const user = await postgresAttendance.findDevelopmentStudent(identifier, mobile);
     return user ? { user, mobile: mobile.replace(/\D/g, "") } : undefined;
   }
   const normalizedIdentifier = identifier.trim().toUpperCase();

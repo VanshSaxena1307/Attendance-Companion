@@ -1,10 +1,30 @@
 import { drizzle } from "drizzle-orm/node-postgres";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import * as schema from "./schema";
 
-process.loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../.env"));
+const envCandidates = [
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../.env"),
+  path.resolve(process.cwd(), ".env"),
+];
+
+if (typeof process.loadEnvFile === "function") {
+  for (const envPath of envCandidates) {
+    if (fs.existsSync(envPath)) {
+      try {
+        process.loadEnvFile(envPath);
+        break;
+      } catch (err: unknown) {
+        const error = err as NodeJS.ErrnoException;
+        if (error?.code !== "ENOENT") {
+          throw err;
+        }
+      }
+    }
+  }
+}
 
 const { Pool } = pg;
 
