@@ -1,6 +1,7 @@
 import type { Request } from "express";
 import crypto from "node:crypto";
 import * as postgresAttendance from "./postgres-attendance-repository";
+import * as postgresTimetable from "./postgres-timetable-repository";
 
 export type Role = "STUDENT" | "MENTOR" | "HOD" | "ADMIN";
 export type Risk = "SAFE" | "WARNING" | "CRITICAL";
@@ -375,3 +376,25 @@ export async function getStudentProfile(id: string, target = 75) {
   const summary = summaries.find((item) => item.id === id);
   return summary && { ...summary, subjects: await getSubjects(id, target), exemptions: exemptions.filter((item) => item.studentId === id), issues: issues.filter((item) => item.studentId === id), notifications: notifications.filter((item) => item.recipientId === id) };
 }
+
+export async function getStudentTodaysSchedule(studentId: string, date?: string) {
+  return postgresTimetable.getStudentSchedule(studentId, date);
+}
+
+export async function getMentorTodaysSchedule(mentorId: string, date?: string) {
+  return postgresTimetable.getMentorSchedule(mentorId, date);
+}
+
+export {
+  getLocalDateString,
+  getDayOfWeekFromDate,
+  getLectureState,
+  type StudentScheduleContext,
+  type MentorScheduleContext,
+  type StudentLectureAttendanceStatus,
+  type MentorLectureAttendanceStatus,
+  type ClassState,
+  type StudentScheduledLecture,
+  type MentorScheduledLecture,
+} from "./postgres-timetable-repository";
+
