@@ -73,8 +73,13 @@ async function main() {
       const rawAdm = cleanVal(row[2]);
       const name = text(row[3]);
       const email = cleanVal(row[4]);
-      const section = sectionCode(row[5]);
+      const sNo = Number(row[0]);
+      // S.No 1..67 belong to CSE-34; S.No 68..134 belong to CSE-35
+      const section = (sNo > 0 && sNo <= 67) ? "CSE34" : (sNo > 67 ? "CSE35" : sectionCode(row[5]));
       const mobile = cleanVal(row[6]);
+      const labBatch = cleanVal(row[7]);
+      const pythonBatch = cleanVal(row[8]);
+      const cloudBatch = cleanVal(row[9]);
 
       // If admissionNo is absent, extract from email pattern if possible
       let derivedAdmNo = rawAdm;
@@ -83,7 +88,7 @@ async function main() {
         if (emailMatch) derivedAdmNo = `20${emailMatch[1].toUpperCase()}`;
       }
 
-      return { rollNo, admissionNo: derivedAdmNo, name, email, section, mobile };
+      return { rollNo, admissionNo: derivedAdmNo, name, email, section, mobile, labBatch, pythonBatch, cloudBatch };
     });
 
   // ── Parse subjects ────────────────────────────────────────────────────────
@@ -158,11 +163,23 @@ async function main() {
         report.emailsUpdated += updated;
       }
 
-      // Update mobile: sync value from Excel (updates if distinct, sets null if blank)
+      // Update mobile, batches, and section: sync values from Excel
+      const targetSecId = makeId("section", student.section);
       const resMob = await db.execute(
-        sql`UPDATE students SET mobile = ${student.mobile}
+        sql`UPDATE students
+            SET mobile = ${student.mobile},
+                lab_batch = ${student.labBatch},
+                python_batch = ${student.pythonBatch},
+                cloud_batch = ${student.cloudBatch},
+                section_id = ${targetSecId}
             WHERE id = ${userId}
-              AND (mobile IS DISTINCT FROM ${student.mobile})`
+              AND (
+                mobile IS DISTINCT FROM ${student.mobile} OR
+                lab_batch IS DISTINCT FROM ${student.labBatch} OR
+                python_batch IS DISTINCT FROM ${student.pythonBatch} OR
+                cloud_batch IS DISTINCT FROM ${student.cloudBatch} OR
+                section_id IS DISTINCT FROM ${targetSecId}
+              )`
       );
       const updatedMob = (resMob as { rowCount?: number }).rowCount ?? 0;
       report.mobilesUpdated += updatedMob;
@@ -199,6 +216,9 @@ async function main() {
           sectionId: makeId("section", student.section),
           mobile: student.mobile,
           mentorId: null,
+          labBatch: student.labBatch,
+          pythonBatch: student.pythonBatch,
+          cloudBatch: student.cloudBatch,
         })
         .onConflictDoNothing();
 
