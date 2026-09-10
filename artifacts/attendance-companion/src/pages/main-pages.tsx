@@ -89,27 +89,34 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   const save = useSubmitTeacherAttendance();
 
   useEffect(() => {
-    if (!roster.data) return;
+    if (!roster.data || roster.isError) {
+      setMarks({});
+      return;
+    }
     const recorded = new Map((existing.data ?? []).map(item => [item.studentId, item.status]));
     setMarks(Object.fromEntries(roster.data.map(student => [student.id, recorded.get(student.id) ?? 'PRESENT'])));
-  }, [roster.data, existing.data]);
+  }, [roster.data, roster.isError, existing.data]);
 
   const handleDateChange = (newDate: string) => {
     setDate(newDate);
     setMessage('');
     setSelectedLecture(null);
+    setMarks({});
   };
 
   const handleSelectLecture = (lecture: MentorScheduledLecture) => {
     setSelectedLecture(lecture);
     setShowManualFallback(false);
     setMessage('');
+    setMarks({});
   };
 
   const isLectureLocked = selectedLecture ? selectedLecture.classState === 'UPCOMING' : false;
 
-  const present = Object.values(marks).filter(status => status === 'PRESENT').length;
   const students = safeArray(roster.data);
+  const present = roster.data && !roster.isError
+    ? Object.values(marks).filter(status => status === 'PRESENT').length
+    : 0;
 
   const toggle = (studentId: string) => {
     if (isLectureLocked) return;
@@ -120,7 +127,7 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   };
 
   const markAllPresent = () => {
-    if (isLectureLocked || !students.length) return;
+    if (isLectureLocked || !students.length || roster.isError) return;
     setMarks(Object.fromEntries(students.map(student => [student.id, 'PRESENT'])) as Record<string, 'PRESENT' | 'ABSENT'>);
   };
 
@@ -203,6 +210,7 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                   onChange={event => {
                     setManualAssignmentKey(event.target.value);
                     setSelectedLecture(null);
+                    setMarks({});
                     setMessage('');
                   }}
                   data-testid="select-teacher-assignment"
@@ -264,9 +272,19 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
               </div>
 
               <div className="flex items-center gap-3 self-start sm:self-center">
-                <span className="font-mono text-xs sm:text-sm font-semibold px-3 py-1 rounded-xl bg-background border border-border/70">
-                  {present}/{students.length} present
-                </span>
+                {roster.isLoading ? (
+                  <span className="font-mono text-xs sm:text-sm text-muted-foreground px-3 py-1 rounded-xl bg-background border border-border/70">
+                    Loading roster…
+                  </span>
+                ) : roster.isError ? (
+                  <span className="font-mono text-xs sm:text-sm text-destructive font-semibold px-3 py-1 rounded-xl bg-destructive/10 border border-destructive/30">
+                    Roster unavailable
+                  </span>
+                ) : (
+                  <span className="font-mono text-xs sm:text-sm font-semibold px-3 py-1 rounded-xl bg-background border border-border/70">
+                    {present}/{students.length} present
+                  </span>
+                )}
               </div>
             </div>
 
@@ -296,7 +314,7 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
               </div>
               <Button
                 onClick={markAllPresent}
-                disabled={!students.length || roster.isLoading || isLectureLocked}
+                disabled={!students.length || roster.isLoading || roster.isError || isLectureLocked}
                 testId="button-roster-mark-all-present"
               >
                 <Check size={16} /> Mark all present
@@ -304,9 +322,9 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
             </div>
 
             {/* Student List */}
-            {roster.isLoading || existing.isLoading ? (
+            {roster.isLoading ? (
               <LoadingBlock rows={6} />
-            ) : roster.isError || existing.isError ? (
+            ) : roster.isError ? (
               <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }} />
             ) : students.length === 0 ? (
               <EmptyBlock
@@ -375,9 +393,9 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                 {manualSelected.subjectName} · {manualSelected.sectionCode}
               </h2>
             </div>
-            {roster.isLoading || existing.isLoading ? (
+            {roster.isLoading ? (
               <LoadingBlock rows={6} />
-            ) : roster.isError || existing.isError ? (
+            ) : roster.isError ? (
               <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }} />
             ) : students.length === 0 ? (
               <EmptyBlock title="No students found" detail="No students found for this section." />

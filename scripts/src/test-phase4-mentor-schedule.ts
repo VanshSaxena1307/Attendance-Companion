@@ -11,6 +11,7 @@ import {
   usersTable,
   sectionsTable,
   teachersTable,
+  teacherSubjectSectionsTable,
   timetableEntriesTable,
   attendanceTable,
   eq,
@@ -179,6 +180,65 @@ async function runPhase4Tests() {
     }
     console.log(`✓ Lab Batch ${labEntry.batch} isolated correctly (${labRoster.length} students, 0 from other batches)`);
 
+    // ── 4B. Focused Failing Case: CSE35 + 25CS352 + Lab B2 + timetableEntryId ──
+    console.log("\n[TEST 4B] Specific Failing Case: CSE35 + 25CS352 (OS Lab) + Lab B2");
+    const [osLabEntry] = await db
+      .select()
+      .from(timetableEntriesTable)
+      .where(
+        and(
+          eq(timetableEntriesTable.subjectCode, "25CS352"),
+          eq(timetableEntriesTable.batch, "B2")
+        )
+      );
+
+    assert(osLabEntry, "Operating System Lab B2 timetable entry not found");
+    const [osTeacherUser] = await db
+      .select({ id: teachersTable.id, name: usersTable.name, email: usersTable.email, initials: usersTable.initials, department: usersTable.department })
+      .from(teachersTable)
+      .innerJoin(usersTable, eq(usersTable.id, teachersTable.id))
+      .where(eq(teachersTable.id, osLabEntry.teacherId!));
+
+    assert(osTeacherUser, "OS Lab teacher not found");
+    const userOS: CurrentUser = {
+      id: osTeacherUser.id,
+      name: osTeacherUser.name,
+      email: osTeacherUser.email ?? "oslab@abes.ac.in",
+      role: "MENTOR",
+      initials: osTeacherUser.initials,
+      department: osTeacherUser.department ?? "CSE",
+    };
+    const sessionTokenOS = sessionForUser(userOS);
+
+    // Verify GET /api/teacher/sections/:sectionId/students?subjectId=...&timetableEntryId=...
+    const resOSRoster = await fetch(
+      `${baseUrl}/api/teacher/sections/${osLabEntry.sectionId}/students?subjectId=${osLabEntry.subjectId}&timetableEntryId=${osLabEntry.id}`,
+      { headers: { Cookie: `ac_session=${sessionTokenOS}` } }
+    );
+    assert.strictEqual(resOSRoster.status, 200, "CSE35 OS Lab B2 roster fetch failed");
+    const osRoster = (await resOSRoster.json()) as any[];
+    assert.strictEqual(osRoster.length, 33, `Expected exactly 33 students in CSE35 Lab B2, got ${osRoster.length}`);
+
+    // Verify all 33 students have lab_batch = 'B2'
+    const cse35Students = await db
+      .select({ id: studentsTable.id, labBatch: studentsTable.labBatch })
+      .from(studentsTable)
+      .where(eq(studentsTable.sectionId, osLabEntry.sectionId));
+    const cse35LabMap = new Map(cse35Students.map((s) => [s.id, s.labBatch]));
+    for (const st of osRoster) {
+      assert.strictEqual(cse35LabMap.get(st.id), "B2", `Student ${st.name} (${st.id}) is not in Lab B2`);
+    }
+
+    // Verify GET /api/teacher/attendance query succeeds with 200 (was 400 prior to fix)
+    const resOSAttendance = await fetch(
+      `${baseUrl}/api/teacher/attendance?subjectId=${osLabEntry.subjectId}&sectionId=${osLabEntry.sectionId}&date=2026-08-27`,
+      { headers: { Cookie: `ac_session=${sessionTokenOS}` } }
+    );
+    assert.strictEqual(resOSAttendance.status, 200, "GET /api/teacher/attendance must return 200 OK");
+    const osAttendanceData = (await resOSAttendance.json()) as any[];
+    assert(Array.isArray(osAttendanceData), "Expected attendance array");
+    console.log(`✓ CSE35 25CS352 Lab B2 verified: exactly 33 students in roster, attendance query returned 200 OK (${osAttendanceData.length} records)`);
+
     // ── 5. Elective Batch Filtering: Python & Cloud ──
     console.log("\n[TEST 5] Elective Batch Isolation (Python / Cloud)");
     const electiveEntries = await db
@@ -191,6 +251,14 @@ async function runPhase4Tests() {
         batchType: timetableEntriesTable.batchType,
       })
       .from(timetableEntriesTable)
+      .innerJoin(
+        teacherSubjectSectionsTable,
+        and(
+          eq(teacherSubjectSectionsTable.teacherId, timetableEntriesTable.teacherId),
+          eq(teacherSubjectSectionsTable.subjectId, timetableEntriesTable.subjectId),
+          eq(teacherSubjectSectionsTable.sectionId, timetableEntriesTable.sectionId)
+        )
+      )
       .where(eq(timetableEntriesTable.batchType, "PYTHON"))
       .limit(1);
 
@@ -210,10 +278,54 @@ async function runPhase4Tests() {
             `${baseUrl}/api/teacher/sections/${pyEntry.sectionId}/students?subjectId=${pyEntry.subjectId}&timetableEntryId=${pyEntry.id}`,
             { headers: { Cookie: `ac_session=${sessionTokenPy}` } }
           );
-          if (resPyRoster.status === 200) {
-            const pyRoster = (await resPyRoster.json()) as any[];
-            console.log(`✓ Python batch ${pyEntry.batch} isolated (${pyRoster.length} students)`);
-          }
+          assert.strictEqual(resPyRoster.status, 200, "Python roster fetch failed");
+          const pyRoster = (await resPyRoster.json()) as any[];
+          console.log(`✓ Python batch ${pyEntry.batch} isolated (${pyRoster.length} students)`);
+        }
+      }
+    }
+
+    // Cloud Elective Test
+    const cloudEntries = await db
+      .select({
+        id: timetableEntriesTable.id,
+        teacherId: timetableEntriesTable.teacherId,
+        sectionId: timetableEntriesTable.sectionId,
+        subjectId: timetableEntriesTable.subjectId,
+        batch: timetableEntriesTable.batch,
+        batchType: timetableEntriesTable.batchType,
+      })
+      .from(timetableEntriesTable)
+      .innerJoin(
+        teacherSubjectSectionsTable,
+        and(
+          eq(teacherSubjectSectionsTable.teacherId, timetableEntriesTable.teacherId),
+          eq(teacherSubjectSectionsTable.subjectId, timetableEntriesTable.subjectId),
+          eq(teacherSubjectSectionsTable.sectionId, timetableEntriesTable.sectionId)
+        )
+      )
+      .where(eq(timetableEntriesTable.batchType, "CLOUD"))
+      .limit(1);
+
+    if (cloudEntries.length > 0) {
+      const cloudEntry = cloudEntries[0];
+      if (cloudEntry.teacherId && cloudEntry.subjectId) {
+        const [cloudTeacher] = await db
+          .select({ id: teachersTable.id, name: usersTable.name, email: usersTable.email, initials: usersTable.initials })
+          .from(teachersTable)
+          .innerJoin(usersTable, eq(usersTable.id, teachersTable.id))
+          .where(eq(teachersTable.id, cloudEntry.teacherId));
+
+        if (cloudTeacher) {
+          const userCloud: CurrentUser = { id: cloudTeacher.id, name: cloudTeacher.name, email: cloudTeacher.email ?? "cloud@test.local", role: "MENTOR", initials: cloudTeacher.initials, department: "CSE" };
+          const sessionTokenCloud = sessionForUser(userCloud);
+          const resCloudRoster = await fetch(
+            `${baseUrl}/api/teacher/sections/${cloudEntry.sectionId}/students?subjectId=${cloudEntry.subjectId}&timetableEntryId=${cloudEntry.id}`,
+            { headers: { Cookie: `ac_session=${sessionTokenCloud}` } }
+          );
+          assert.strictEqual(resCloudRoster.status, 200, "Cloud roster fetch failed");
+          const cloudRoster = (await resCloudRoster.json()) as any[];
+          console.log(`✓ Cloud batch ${cloudEntry.batch} isolated (${cloudRoster.length} students)`);
         }
       }
     }
@@ -264,6 +376,14 @@ async function runPhase4Tests() {
       futureErr.error.includes("future"),
       "Error must explain start time restriction"
     );
+
+    // Verify roster can still be viewed for upcoming lecture in read-only mode
+    const resUpcomingRoster = await fetch(
+      `${baseUrl}/api/teacher/sections/${theoryLec.sectionId}/students?subjectId=${theoryLec.subjectId}&timetableEntryId=${theoryLec.timetableEntryId}`,
+      { headers: { Cookie: `ac_session=${sessionTokenMG}` } }
+    );
+    assert.strictEqual(resUpcomingRoster.status, 200, "Upcoming lecture roster must be viewable in read-only mode");
+    console.log("✓ Upcoming lecture roster is viewable in read-only mode while writes are locked");
     console.log("✓ Server-side start time enforcement strictly validated");
 
     // ── 8. Attendance Marking: Mark All Present & Individual Absent ──

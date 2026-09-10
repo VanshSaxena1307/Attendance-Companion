@@ -253,13 +253,17 @@ export function MentorLectureCard({
             ) : isLocked ? (
               <button
                 type="button"
-                disabled
+                onClick={() => onSelect(lecture)}
                 data-testid={`button-lecture-locked-${lecture.timetableEntryId}`}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-border/60 bg-muted/60 px-3.5 py-2 text-xs font-semibold text-muted-foreground cursor-not-allowed opacity-80"
-                title="Attendance cannot be marked before the lecture start time"
+                className={`w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all ${
+                  isSelected
+                    ? 'border-amber-500/60 bg-amber-500/15 text-amber-900 dark:text-amber-200'
+                    : 'border-border/70 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                title="Lecture has not started — click to view enrolled roster in read-only mode"
               >
                 <Lock size={13} />
-                Lecture has not started
+                {isSelected ? 'Viewing Roster (Locked)' : 'Lecture has not started'}
               </button>
             ) : lecture.attendanceStatus === 'ATTENDANCE_MARKED' ? (
               <button

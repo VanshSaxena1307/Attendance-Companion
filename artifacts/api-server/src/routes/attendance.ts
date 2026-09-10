@@ -136,9 +136,11 @@ router.get("/teacher/sections/:sectionId/students", async (req, res): Promise<vo
 
 router.get("/teacher/attendance", async (req, res): Promise<void> => {
   const teacher = mentorOnly(res); if (!teacher) return;
-  const query = GetTeacherAttendanceQueryParams.safeParse(req.query);
+  const rawDate = typeof req.query.date === "string" ? new Date(req.query.date) : req.query.date;
+  const query = GetTeacherAttendanceQueryParams.safeParse({ ...req.query, date: rawDate });
   if (!query.success) { res.status(400).json({ error: "subjectId, sectionId, and a YYYY-MM-DD date are required." }); return; }
-  const attendance = await teacherAttendance.getTeacherAttendance(teacher.id, query.data.subjectId, query.data.sectionId, isoDate(query.data.date));
+  const dateStr = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : isoDate(query.data.date);
+  const attendance = await teacherAttendance.getTeacherAttendance(teacher.id, query.data.subjectId, query.data.sectionId, dateStr);
   if (!attendance) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
   res.json(GetTeacherAttendanceResponse.parse(attendance));
 });
