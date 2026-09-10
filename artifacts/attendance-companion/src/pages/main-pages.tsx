@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownRight, ArrowUpRight, Check, ChevronRight, CircleAlert, ClipboardCheck, Clock3, FilePlus2, FileWarning, Info, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Target, TrendingUp, X } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, ClipboardCheck, Clock3, FilePlus2, FileWarning, Info, Layers, Lock, MapPin, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Target, TrendingUp, Users, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AppShell, Button, EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, StatusPill } from '@/components/app-shell';
 import { StudentTodaySchedule } from '@/components/student-today-schedule';
+import { MentorTodaySchedule } from '@/components/mentor-today-schedule';
+import { getMentorScheduleQueryKey, type MentorScheduledLecture } from '@/hooks/use-mentor-schedule';
 import { getGetAttendanceIssuesQueryKey, getGetDashboardSummaryQueryKey, getGetExemptionsQueryKey, getGetNotificationsQueryKey, getGetSettingsQueryKey, getGetStudentQueryKey, getGetTeacherAttendanceQueryKey, getGetTeacherSectionStudentsQueryKey, useApproveExemption, useCreateAttendanceIssue, useCreateExemption, useGetAttendanceHistory, useGetAttendanceIssues, useGetAttendanceTrend, useGetDashboardSummary, useGetExemptions, useGetNotifications, useGetSettings, useGetStudent, useGetStudents, useGetTeacherAssignments, useGetTeacherAttendance, useGetTeacherSectionStudents, useMarkAllNotificationsRead, useMarkNotificationRead, useRejectAttendanceIssue, useRejectExemption, useResolveAttendanceIssue, useSubmitTeacherAttendance, useUpdateSettings, useGetSubjectAttendance } from '@workspace/api-client-react';
 import { AttendanceIssueInputIssueType, ExemptionInputCategory, GetAttendanceHistoryStatus, GetAttendanceIssuesStatus, GetExemptionsStatus, GetStudentsRisk, type AttendanceIssue, type CurrentUser, type Exemption, type Settings, type Student, type SubjectAttendance } from '@workspace/api-client-react';
 
@@ -41,47 +43,437 @@ function Attendance({ user }: { user: CurrentUser }) {
 }
 
 export function TeacherAttendance({ user }: { user: CurrentUser }) {
+  const queryClient = useQueryClient();
   const assignmentsQuery = useGetTeacherAssignments();
   const assignments = safeArray(assignmentsQuery.data);
-  const [assignmentKey, setAssignmentKey] = useState('');
+
+  // Selected schedule date (defaults to today)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Selected scheduled lecture from timetable
+  const [selectedLecture, setSelectedLecture] = useState<MentorScheduledLecture | null>(null);
+
+  // Manual fallback controls
+  const [showManualFallback, setShowManualFallback] = useState(false);
+  const [manualAssignmentKey, setManualAssignmentKey] = useState('');
+
   const [marks, setMarks] = useState<Record<string, 'PRESENT' | 'ABSENT'>>({});
   const [message, setMessage] = useState('');
-  const selected = assignments.find(item => `${item.subjectId}:${item.sectionId}` === assignmentKey) ?? assignments[0];
-  const rosterParams = { subjectId: selected?.subjectId ?? '' };
-  const attendanceParams = { subjectId: selected?.subjectId ?? '', sectionId: selected?.sectionId ?? '', date };
-  const roster = useGetTeacherSectionStudents(selected?.sectionId ?? '', rosterParams, { query: { enabled: Boolean(selected), queryKey: getGetTeacherSectionStudentsQueryKey(selected?.sectionId ?? '', rosterParams) } });
-  const existing = useGetTeacherAttendance(attendanceParams, { query: { enabled: Boolean(selected), queryKey: getGetTeacherAttendanceQueryKey(attendanceParams) } });
+
+  // Fallback assignment when manually chosen
+  const manualSelected = assignments.find(item => `${item.subjectId}:${item.sectionId}` === manualAssignmentKey) ?? assignments[0];
+
+  const activeSubjectId = selectedLecture ? (selectedLecture.subjectId ?? '') : (manualSelected?.subjectId ?? '');
+  const activeSectionId = selectedLecture ? selectedLecture.sectionId : (manualSelected?.sectionId ?? '');
+  const activeTimetableEntryId = selectedLecture ? selectedLecture.timetableEntryId : undefined;
+
+  const rosterParams: any = { subjectId: activeSubjectId };
+  if (activeTimetableEntryId) {
+    rosterParams.timetableEntryId = activeTimetableEntryId;
+  }
+
+  const attendanceParams = { subjectId: activeSubjectId, sectionId: activeSectionId, date };
+  const isEnabled = Boolean(activeSubjectId && activeSectionId);
+
+  const roster = useGetTeacherSectionStudents(
+    activeSectionId,
+    rosterParams,
+    { query: { enabled: isEnabled, queryKey: ['/api/teacher/sections', activeSectionId, 'students', rosterParams] } }
+  );
+
+  const existing = useGetTeacherAttendance(
+    attendanceParams,
+    { query: { enabled: isEnabled, queryKey: getGetTeacherAttendanceQueryKey(attendanceParams) } }
+  );
+
   const save = useSubmitTeacherAttendance();
 
-  useEffect(() => { if (selected && assignmentKey !== `${selected.subjectId}:${selected.sectionId}`) setAssignmentKey(`${selected.subjectId}:${selected.sectionId}`); }, [selected, assignmentKey]);
   useEffect(() => {
     if (!roster.data) return;
     const recorded = new Map((existing.data ?? []).map(item => [item.studentId, item.status]));
     setMarks(Object.fromEntries(roster.data.map(student => [student.id, recorded.get(student.id) ?? 'PRESENT'])));
   }, [roster.data, existing.data]);
 
-  const present = Object.values(marks).filter(status => status === 'PRESENT').length;
-  const toggle = (studentId: string) => setMarks(current => ({ ...current, [studentId]: current[studentId] === 'ABSENT' ? 'PRESENT' : 'ABSENT' }));
-  const markAllPresent = () => setMarks(Object.fromEntries(safeArray(roster.data).map(student => [student.id, 'PRESENT'])) as Record<string, 'PRESENT' | 'ABSENT'>);
-  const submit = () => {
-    if (!selected || !roster.data) return;
+  const handleDateChange = (newDate: string) => {
+    setDate(newDate);
     setMessage('');
-    save.mutate({ data: { subjectId: selected.subjectId, sectionId: selected.sectionId, date, attendance: roster.data.map(student => ({ studentId: student.id, status: marks[student.id] ?? 'PRESENT' })) } }, {
-      onSuccess: () => { setMessage('Attendance saved. Student records now reflect these marks.'); },
-      onError: () => setMessage('We could not save attendance. Please check the selection and try again.'),
+    setSelectedLecture(null);
+  };
+
+  const handleSelectLecture = (lecture: MentorScheduledLecture) => {
+    setSelectedLecture(lecture);
+    setShowManualFallback(false);
+    setMessage('');
+  };
+
+  const isLectureLocked = selectedLecture ? selectedLecture.classState === 'UPCOMING' : false;
+
+  const present = Object.values(marks).filter(status => status === 'PRESENT').length;
+  const students = safeArray(roster.data);
+
+  const toggle = (studentId: string) => {
+    if (isLectureLocked) return;
+    setMarks(current => ({
+      ...current,
+      [studentId]: current[studentId] === 'ABSENT' ? 'PRESENT' : 'ABSENT'
+    }));
+  };
+
+  const markAllPresent = () => {
+    if (isLectureLocked || !students.length) return;
+    setMarks(Object.fromEntries(students.map(student => [student.id, 'PRESENT'])) as Record<string, 'PRESENT' | 'ABSENT'>);
+  };
+
+  const submit = () => {
+    if (!activeSubjectId || !activeSectionId || !roster.data?.length || isLectureLocked) return;
+    setMessage('');
+
+    const payload: any = {
+      subjectId: activeSubjectId,
+      sectionId: activeSectionId,
+      date,
+      attendance: roster.data.map(student => ({
+        studentId: student.id,
+        status: marks[student.id] ?? 'PRESENT'
+      })),
+    };
+
+    if (activeTimetableEntryId) {
+      payload.timetableEntryId = activeTimetableEntryId;
+    }
+
+    save.mutate({ data: payload }, {
+      onSuccess: () => {
+        setMessage('Attendance saved. Student records now reflect these marks.');
+        queryClient.invalidateQueries({ queryKey: getMentorScheduleQueryKey(date) });
+        queryClient.invalidateQueries({ queryKey: getMentorScheduleQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ['/api/student/schedule/today'] });
+        queryClient.invalidateQueries({ queryKey: getGetTeacherAttendanceQueryKey(attendanceParams) });
+        queryClient.invalidateQueries({ queryKey: ['/api/teacher/sections', activeSectionId, 'students'] });
+      },
+      onError: (err: any) => {
+        setMessage(err?.message || 'We could not save attendance. Please check the selection and try again.');
+      },
     });
   };
 
-  if (assignmentsQuery.isLoading) return <AppShell user={user}><PageHeader title="Mark attendance"/><LoadingBlock rows={5}/></AppShell>;
-  if (assignmentsQuery.isError) return <AppShell user={user}><ErrorBlock retry={() => assignmentsQuery.refetch()}/></AppShell>;
-  if (!selected) return <AppShell user={user}><PageHeader eyebrow="Teaching workspace" title="No assignments found." description="There are no subject and section assignments associated with this teacher account."/></AppShell>;
-  const students = safeArray(roster.data);
-  return <AppShell user={user}><PageHeader eyebrow="Teaching workspace" title="Mark today’s class." description="Choose one of your assigned subject and section combinations. Changes stay local until you save the full class." action={<Button onClick={markAllPresent} disabled={!students.length || roster.isLoading} testId="button-mark-all-present"><Check size={16}/> Mark all present</Button>}/>
-    <section className="rounded-2xl border border-border/70 bg-card p-5 sm:p-6"><div className="grid gap-4 md:grid-cols-2"><Field label="Assigned class"><select value={`${selected.subjectId}:${selected.sectionId}`} onChange={event => { setAssignmentKey(event.target.value); setMessage(''); }} data-testid="select-teacher-assignment" className={inputClass}>{assignments.map(item => <option key={`${item.subjectId}:${item.sectionId}`} value={`${item.subjectId}:${item.sectionId}`}>{item.subjectCode} · {item.subjectName} — {item.sectionCode}</option>)}</select></Field><Field label="Attendance date"><input type="date" value={date} onChange={event => { setDate(event.target.value); setMessage(''); }} data-testid="input-teacher-attendance-date" className={inputClass}/></Field></div><div className="mt-5 flex items-center justify-between rounded-xl bg-secondary/45 px-4 py-3 text-sm"><span><strong>{selected.subjectName}</strong><span className="text-muted-foreground"> · {selected.sectionCode}</span></span><span className="font-mono text-xs text-muted-foreground">{present}/{students.length} present</span></div></section>
-    <section className="mt-5 rounded-2xl border border-border/70 bg-card p-5 sm:p-6"><div className="mb-4"><p className="text-[11px] font-bold uppercase tracking-[.15em] text-primary">Enrolled students</p><h2 className="mt-1 font-display text-2xl">Tap a student to change their mark.</h2></div>{roster.isLoading || existing.isLoading ? <LoadingBlock rows={6}/> : roster.isError || existing.isError ? <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }}/> : <div className="grid gap-2">{students.map(student => { const status = marks[student.id] ?? 'PRESENT'; return <button key={student.id} onClick={() => toggle(student.id)} data-testid={`button-attendance-${student.id}`} className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${status === 'PRESENT' ? 'border-primary/20 bg-secondary/35 hover:border-primary/50' : 'border-destructive/25 bg-destructive/5 hover:border-destructive/50'}`}><span><strong className="block text-sm">{student.name}</strong><span className="mt-0.5 block text-xs text-muted-foreground">{student.rollNo} · {student.admissionNo}</span></span><StatusPill status={status}/></button>; })}</div>}</section>
-    <div className="sticky bottom-3 mt-5 flex flex-col gap-3 rounded-2xl border border-border bg-card/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p aria-live="polite" className={`text-xs ${message.startsWith('Attendance saved') ? 'text-primary' : 'text-destructive'}`}>{message}</p><Button onClick={submit} disabled={!students.length || save.isPending || roster.isLoading} testId="button-save-teacher-attendance">{save.isPending ? 'Saving class…' : 'Save attendance'}</Button></div>
-  </AppShell>;
+  return (
+    <AppShell user={user}>
+      <PageHeader
+        eyebrow="Teaching workspace"
+        title="Today’s Schedule & Attendance"
+        description="Select any scheduled lecture from your timetable to review batch enrollments and record attendance."
+        action={
+          <Button
+            onClick={markAllPresent}
+            disabled={!students.length || roster.isLoading || isLectureLocked}
+            testId="button-mark-all-present"
+          >
+            <Check size={16} /> Mark all present
+          </Button>
+        }
+      />
+
+      {/* 1. Timetable-driven Mentor Schedule */}
+      <MentorTodaySchedule
+        selectedDate={date}
+        onDateChange={handleDateChange}
+        selectedLectureId={selectedLecture?.timetableEntryId ?? null}
+        onSelectLecture={handleSelectLecture}
+      />
+
+      {/* 2. Manual Assignment Fallback (Preserves legacy capability with verified authorization) */}
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={() => setShowManualFallback(prev => !prev)}
+          data-testid="button-toggle-manual-fallback"
+          className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showManualFallback ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          <span>Manual Class Selector (Fallback)</span>
+        </button>
+
+        {showManualFallback && (
+          <section className="mt-3 rounded-2xl border border-border/70 bg-card p-4 sm:p-6 animate-rise-in">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Assigned class">
+                <select
+                  value={manualAssignmentKey || (manualSelected ? `${manualSelected.subjectId}:${manualSelected.sectionId}` : '')}
+                  onChange={event => {
+                    setManualAssignmentKey(event.target.value);
+                    setSelectedLecture(null);
+                    setMessage('');
+                  }}
+                  data-testid="select-teacher-assignment"
+                  className={inputClass}
+                >
+                  {assignments.map(item => (
+                    <option key={`${item.subjectId}:${item.sectionId}`} value={`${item.subjectId}:${item.sectionId}`}>
+                      {item.subjectCode} · {item.subjectName} — {item.sectionCode}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Attendance date">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={event => {
+                    handleDateChange(event.target.value);
+                  }}
+                  data-testid="input-teacher-attendance-date"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* 3. Selected Lecture / Roster Section */}
+      <section className="mt-5 rounded-2xl border border-border/70 bg-card p-4 sm:p-6 shadow-[0_5px_18px_hsl(191_35%_17%/.03)]">
+        {selectedLecture ? (
+          <div>
+            {/* Lecture Details Bar */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl bg-secondary/50 border border-border/60 p-4">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-foreground text-sm sm:text-base">
+                    {selectedLecture.subjectName}
+                  </span>
+                  <span className="font-mono text-xs font-medium px-2 py-0.5 rounded-md bg-background border border-border/70">
+                    {selectedLecture.subjectCode}
+                  </span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-accent/25 text-accent-foreground border border-accent/40">
+                    Section {selectedLecture.section}
+                  </span>
+                  {selectedLecture.batchType !== 'ALL' && (
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/30">
+                      Batch {selectedLecture.batch}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-3 pt-0.5">
+                  <span>Room {selectedLecture.room}</span>
+                  <span>·</span>
+                  <span>{selectedLecture.startTime} – {selectedLecture.endTime}</span>
+                  <span>·</span>
+                  <span className="uppercase">{selectedLecture.lectureType}</span>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 self-start sm:self-center">
+                <span className="font-mono text-xs sm:text-sm font-semibold px-3 py-1 rounded-xl bg-background border border-border/70">
+                  {present}/{students.length} present
+                </span>
+              </div>
+            </div>
+
+            {/* Start Time Restriction Banner */}
+            {isLectureLocked && (
+              <div
+                data-testid="banner-lecture-not-started"
+                className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-300"
+              >
+                <Clock3 size={18} className="shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold">Lecture has not started</p>
+                  <p className="opacity-90">
+                    Attendance controls are disabled until the scheduled lecture start time ({selectedLecture.startTime}). Once the start time is reached, marking will become available.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Roster Header */}
+            <div className="mt-6 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[.15em] text-primary">Class Roster</p>
+                <h2 className="mt-1 font-display text-xl sm:text-2xl">
+                  {isLectureLocked ? 'Enrolled Students (Read Only)' : 'Tap a student to toggle attendance'}
+                </h2>
+              </div>
+              <Button
+                onClick={markAllPresent}
+                disabled={!students.length || roster.isLoading || isLectureLocked}
+                testId="button-roster-mark-all-present"
+              >
+                <Check size={16} /> Mark all present
+              </Button>
+            </div>
+
+            {/* Student List */}
+            {roster.isLoading || existing.isLoading ? (
+              <LoadingBlock rows={6} />
+            ) : roster.isError || existing.isError ? (
+              <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }} />
+            ) : students.length === 0 ? (
+              <EmptyBlock
+                title="No students enrolled in this batch"
+                detail="There are no students assigned to this section and batch combination in the database."
+              />
+            ) : (
+              <div className="grid gap-2 sm:gap-2.5">
+                {students.map((student) => {
+                  const status = marks[student.id] ?? 'PRESENT';
+                  const isPresent = status === 'PRESENT';
+                  return (
+                    <div
+                      key={student.id}
+                      data-testid={`row-student-${student.id}`}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 sm:p-4 transition-colors ${
+                        isPresent
+                          ? 'border-primary/25 bg-secondary/35 hover:border-primary/50'
+                          : 'border-destructive/30 bg-destructive/5 hover:border-destructive/50'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-background border border-border/70 text-foreground">
+                            {student.rollNo}
+                          </span>
+                          <strong className="text-sm font-semibold text-foreground truncate">
+                            {student.name}
+                          </strong>
+                        </div>
+                        <span className="mt-1 block text-xs text-muted-foreground font-mono">
+                          {student.admissionNo}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <StatusPill status={status} />
+                        <button
+                          type="button"
+                          disabled={isLectureLocked}
+                          onClick={() => toggle(student.id)}
+                          data-testid={`button-attendance-${student.id}`}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                            isLectureLocked
+                              ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
+                              : isPresent
+                              ? 'border border-destructive/30 text-destructive hover:bg-destructive/10'
+                              : 'bg-primary text-primary-foreground hover:brightness-110 shadow-xs'
+                          }`}
+                        >
+                          {isPresent ? <X size={13} /> : <Check size={13} />}
+                          {isPresent ? 'Mark Absent' : 'Mark Present'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : manualSelected ? (
+          <div>
+            <div className="mb-4">
+              <p className="text-[11px] font-bold uppercase tracking-[.15em] text-primary">Manual Class Roster</p>
+              <h2 className="mt-1 font-display text-xl sm:text-2xl">
+                {manualSelected.subjectName} · {manualSelected.sectionCode}
+              </h2>
+            </div>
+            {roster.isLoading || existing.isLoading ? (
+              <LoadingBlock rows={6} />
+            ) : roster.isError || existing.isError ? (
+              <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }} />
+            ) : students.length === 0 ? (
+              <EmptyBlock title="No students found" detail="No students found for this section." />
+            ) : (
+              <div className="grid gap-2 sm:gap-2.5">
+                {students.map((student) => {
+                  const status = marks[student.id] ?? 'PRESENT';
+                  const isPresent = status === 'PRESENT';
+                  return (
+                    <div
+                      key={student.id}
+                      data-testid={`row-student-${student.id}`}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 sm:p-4 transition-colors ${
+                        isPresent
+                          ? 'border-primary/25 bg-secondary/35 hover:border-primary/50'
+                          : 'border-destructive/30 bg-destructive/5 hover:border-destructive/50'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-background border border-border/70 text-foreground">
+                            {student.rollNo}
+                          </span>
+                          <strong className="text-sm font-semibold text-foreground truncate">
+                            {student.name}
+                          </strong>
+                        </div>
+                        <span className="mt-1 block text-xs text-muted-foreground font-mono">
+                          {student.admissionNo}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <StatusPill status={status} />
+                        <button
+                          type="button"
+                          onClick={() => toggle(student.id)}
+                          data-testid={`button-attendance-${student.id}`}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                            isPresent
+                              ? 'border border-destructive/30 text-destructive hover:bg-destructive/10'
+                              : 'bg-primary text-primary-foreground hover:brightness-110 shadow-xs'
+                          }`}
+                        >
+                          {isPresent ? <X size={13} /> : <Check size={13} />}
+                          {isPresent ? 'Mark Absent' : 'Mark Present'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            data-testid="block-mentor-no-lecture-selected"
+            className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-8 text-center"
+          >
+            <Calendar size={32} className="mx-auto text-muted-foreground/60" />
+            <h3 className="mt-3 font-display text-lg">No Lecture Selected</h3>
+            <p className="mt-1 max-w-sm mx-auto text-xs text-muted-foreground leading-relaxed">
+              Select a scheduled lecture from the timetable above using{' '}
+              <strong className="text-foreground">[ Mark Attendance ]</strong> or{' '}
+              <strong className="text-foreground">[ View / Edit Attendance ]</strong> to load the student roster.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* 4. Sticky Save Bar */}
+      {(selectedLecture || manualSelected) && (
+        <div className="sticky bottom-3 mt-5 flex flex-col gap-3 rounded-2xl border border-border bg-card/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <p
+            aria-live="polite"
+            className={`text-xs ${
+              message.startsWith('Attendance saved')
+                ? 'text-primary font-medium'
+                : message
+                ? 'text-destructive font-medium'
+                : 'text-muted-foreground'
+            }`}
+          >
+            {message || (isLectureLocked ? 'Marking locked until lecture starts' : 'Ready to save class attendance')}
+          </p>
+          <Button
+            onClick={submit}
+            disabled={!students.length || save.isPending || roster.isLoading || isLectureLocked}
+            testId="button-save-teacher-attendance"
+          >
+            {save.isPending ? 'Saving class…' : 'Save attendance'}
+          </Button>
+        </div>
+      )}
+    </AppShell>
+  );
 }
 
 function Modal({ title, close, children }: { title:string; close:()=>void; children:React.ReactNode }) { return <div className="fixed inset-0 z-50 flex items-end justify-center bg-sidebar/40 p-0 backdrop-blur-sm sm:items-center sm:p-5"><div className="max-h-[92dvh] w-full max-w-lg overflow-auto rounded-t-3xl border border-border bg-card p-6 shadow-2xl sm:rounded-3xl"><div className="mb-5 flex items-center justify-between"><h2 className="font-display text-2xl">{title}</h2><button onClick={close} data-testid="button-close-modal" className="rounded-full p-2 text-muted-foreground hover:bg-muted"><X size={18}/></button></div>{children}</div></div>; }

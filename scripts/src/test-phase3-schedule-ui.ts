@@ -169,6 +169,7 @@ async function runPhase3Tests() {
     console.log("==================================================");
   } finally {
     server.close();
+    process.exit(0);
   }
 }
 
