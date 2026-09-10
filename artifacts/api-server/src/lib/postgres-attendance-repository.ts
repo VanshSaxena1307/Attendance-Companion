@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { attendanceTable, db, sectionsTable, studentsTable, subjectsTable, teacherSubjectSectionsTable, teachersTable, usersTable } from "@workspace/db";
+import { attendanceTable, db, sectionsTable, studentsTable, subjectsTable, teacherSubjectSectionsTable, teachersTable, timetableEntriesTable, usersTable } from "@workspace/db";
+import { getLectureState, getLocalDateString } from "./postgres-timetable-repository";
 
 export type AttendanceStatus = "PRESENT" | "ABSENT" | "EXEMPTED" | "LATE" | "NOT_MARKED";
 
@@ -177,12 +178,37 @@ async function teacherAssignment(teacherId: string, subjectId: string, sectionId
   return assignment;
 }
 
-export async function getTeacherStudents(teacherId: string, subjectId: string, sectionId: string) {
+export async function getTeacherStudents(teacherId: string, subjectId: string, sectionId: string, timetableEntryId?: string) {
   if (!await teacherAssignment(teacherId, subjectId, sectionId)) return undefined;
+
+  let batchCondition = undefined;
+  if (timetableEntryId) {
+    const [entry] = await db
+      .select()
+      .from(timetableEntriesTable)
+      .where(eq(timetableEntriesTable.id, timetableEntryId));
+
+    if (!entry || entry.teacherId !== teacherId || entry.sectionId !== sectionId || entry.subjectId !== subjectId) {
+      return undefined;
+    }
+
+    if (entry.batchType === "LAB") {
+      batchCondition = eq(studentsTable.labBatch, entry.batch);
+    } else if (entry.batchType === "PYTHON") {
+      batchCondition = eq(studentsTable.pythonBatch, entry.batch);
+    } else if (entry.batchType === "CLOUD") {
+      batchCondition = eq(studentsTable.cloudBatch, entry.batch);
+    }
+  }
+
+  const whereCondition = batchCondition
+    ? and(eq(studentsTable.sectionId, sectionId), batchCondition)
+    : eq(studentsTable.sectionId, sectionId);
+
   return db.select({ id: studentsTable.id, name: usersTable.name, rollNo: studentsTable.rollNo, admissionNo: studentsTable.admissionNo })
     .from(studentsTable)
     .innerJoin(usersTable, eq(usersTable.id, studentsTable.id))
-    .where(eq(studentsTable.sectionId, sectionId))
+    .where(whereCondition)
     .orderBy(asc(studentsTable.rollNo));
 }
 
@@ -194,19 +220,88 @@ export async function getTeacherAttendance(teacherId: string, subjectId: string,
     .orderBy(asc(attendanceTable.studentId));
 }
 
-export async function submitTeacherAttendance(teacherId: string, input: { subjectId: string; sectionId: string; date: string; attendance: Array<{ studentId: string; status: "PRESENT" | "ABSENT" }> }) {
+export async function submitTeacherAttendance(
+  teacherId: string,
+  input: {
+    subjectId: string;
+    sectionId: string;
+    date: string;
+    timetableEntryId?: string;
+    attendance: Array<{ studentId: string; status: "PRESENT" | "ABSENT" }>;
+  }
+) {
   const assignment = await teacherAssignment(teacherId, input.subjectId, input.sectionId);
   if (!assignment) return undefined;
-  const students = await db.select({ id: studentsTable.id, admissionNo: studentsTable.admissionNo }).from(studentsTable).where(eq(studentsTable.sectionId, input.sectionId));
+
+  let batchCondition = undefined;
+  if (input.timetableEntryId) {
+    const [entry] = await db
+      .select()
+      .from(timetableEntriesTable)
+      .where(eq(timetableEntriesTable.id, input.timetableEntryId));
+
+    if (!entry || entry.teacherId !== teacherId || entry.sectionId !== input.sectionId || entry.subjectId !== input.subjectId) {
+      return undefined;
+    }
+
+    // Lecture Start Time Rule: A mentor may mark attendance only when the scheduled lecture has started.
+    const classState = getLectureState(entry.startTime, entry.endTime, input.date);
+    if (classState === "UPCOMING") {
+      throw new TeacherInputError("Attendance cannot be marked before the scheduled lecture start time.");
+    }
+
+    if (entry.batchType === "LAB") {
+      batchCondition = eq(studentsTable.labBatch, entry.batch);
+    } else if (entry.batchType === "PYTHON") {
+      batchCondition = eq(studentsTable.pythonBatch, entry.batch);
+    } else if (entry.batchType === "CLOUD") {
+      batchCondition = eq(studentsTable.cloudBatch, entry.batch);
+    }
+  } else {
+    // Manual fallback: cannot mark attendance for future dates
+    const todayStr = getLocalDateString();
+    if (input.date > todayStr) {
+      throw new TeacherInputError("Attendance cannot be marked for future dates.");
+    }
+  }
+
+  const whereCondition = batchCondition
+    ? and(eq(studentsTable.sectionId, input.sectionId), batchCondition)
+    : eq(studentsTable.sectionId, input.sectionId);
+
+  const students = await db
+    .select({ id: studentsTable.id, admissionNo: studentsTable.admissionNo })
+    .from(studentsTable)
+    .where(whereCondition);
+
   const enrolled = new Set(students.map((student) => student.id));
   const submitted = new Set(input.attendance.map((record) => record.studentId));
-  if (submitted.size !== input.attendance.length || submitted.size !== enrolled.size || [...submitted].some((studentId) => !enrolled.has(studentId))) throw new TeacherInputError("Attendance must include every enrolled student exactly once.");
+  if (submitted.size !== input.attendance.length || submitted.size !== enrolled.size || [...submitted].some((studentId) => !enrolled.has(studentId))) {
+    throw new TeacherInputError("Attendance must include every enrolled student in this class/batch exactly once.");
+  }
+
   const admissions = new Map(students.map((student) => [student.id, student.admissionNo]));
   const markedAt = new Date();
   await db.insert(attendanceTable).values(input.attendance.map((record) => ({
     id: `attendance-${crypto.createHash("sha1").update(`${admissions.get(record.studentId)}:${input.subjectId}:${input.date}`).digest("hex").slice(0, 16)}`,
-    studentId: record.studentId, subjectId: input.subjectId, sectionId: input.sectionId, date: input.date, status: record.status,
-    detail: `Marked by ${assignment.teacherName}`, markedBy: teacherId, markedAt,
-  }))).onConflictDoUpdate({ target: [attendanceTable.studentId, attendanceTable.subjectId, attendanceTable.date], set: { status: sql`excluded.status`, sectionId: sql`excluded.section_id`, detail: sql`excluded.detail`, markedBy: teacherId, markedAt } });
+    studentId: record.studentId,
+    subjectId: input.subjectId,
+    sectionId: input.sectionId,
+    date: input.date,
+    status: record.status,
+    detail: `Marked by ${assignment.teacherName}`,
+    markedBy: teacherId,
+    markedAt,
+  }))).onConflictDoUpdate({
+    target: [attendanceTable.studentId, attendanceTable.subjectId, attendanceTable.date],
+    set: {
+      status: sql`excluded.status`,
+      sectionId: sql`excluded.section_id`,
+      detail: sql`excluded.detail`,
+      markedBy: teacherId,
+      markedAt,
+    },
+  });
+
   return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date);
 }

@@ -388,36 +388,49 @@ export async function getMentorSchedule(
     };
   }
 
-  // Pre-fetch section student counts
-  const sectionIds = [...new Set(entries.map((e) => e.entry.sectionId))];
-  const studentsCountBySection = new Map<string, number>();
-  for (const sId of sectionIds) {
-    const [res] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(studentsTable)
-      .where(eq(studentsTable.sectionId, sId));
-    studentsCountBySection.set(sId, res?.count ?? 0);
-  }
-
-  // Pre-fetch attendance counts for each (subjectId, sectionId) on dateStr
+  // Pre-fetch attendance counts and enrolled counts considering timetable batch rules
   const lectures: MentorScheduledLecture[] = [];
 
   for (const { entry, sectionCode } of entries) {
     let attendanceStatus: MentorLectureAttendanceStatus = "ATTENDANCE_NOT_APPLICABLE";
     let markedCount = 0;
-    const enrolledCount = studentsCountBySection.get(entry.sectionId) ?? 0;
+    let enrolledCount = 0;
+
+    let batchCondition = undefined;
+    if (entry.batchType === "LAB") {
+      batchCondition = eq(studentsTable.labBatch, entry.batch);
+    } else if (entry.batchType === "PYTHON") {
+      batchCondition = eq(studentsTable.pythonBatch, entry.batch);
+    } else if (entry.batchType === "CLOUD") {
+      batchCondition = eq(studentsTable.cloudBatch, entry.batch);
+    }
+
+    const enrolledWhere = batchCondition
+      ? and(eq(studentsTable.sectionId, entry.sectionId), batchCondition)
+      : eq(studentsTable.sectionId, entry.sectionId);
+
+    const [enrolledRes] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(studentsTable)
+      .where(enrolledWhere);
+
+    enrolledCount = enrolledRes?.count ?? 0;
 
     if (entry.subjectId) {
+      const markedWhereConditions = [
+        eq(attendanceTable.subjectId, entry.subjectId),
+        eq(attendanceTable.sectionId, entry.sectionId),
+        eq(attendanceTable.date, dateStr),
+      ];
+      if (batchCondition) {
+        markedWhereConditions.push(batchCondition);
+      }
+
       const [attRes] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(attendanceTable)
-        .where(
-          and(
-            eq(attendanceTable.subjectId, entry.subjectId),
-            eq(attendanceTable.sectionId, entry.sectionId),
-            eq(attendanceTable.date, dateStr)
-          )
-        );
+        .innerJoin(studentsTable, eq(studentsTable.id, attendanceTable.studentId))
+        .where(and(...markedWhereConditions));
 
       markedCount = attRes?.count ?? 0;
       attendanceStatus = markedCount > 0 ? "ATTENDANCE_MARKED" : "ATTENDANCE_NOT_MARKED";

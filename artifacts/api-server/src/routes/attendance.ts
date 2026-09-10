@@ -128,7 +128,8 @@ router.get("/teacher/sections/:sectionId/students", async (req, res): Promise<vo
   const params = GetTeacherSectionStudentsParams.safeParse(req.params);
   const query = GetTeacherSectionStudentsQueryParams.safeParse(req.query);
   if (!params.success || !query.success) { res.status(400).json({ error: "A valid sectionId and subjectId are required." }); return; }
-  const students = await teacherAttendance.getTeacherStudents(teacher.id, query.data.subjectId, params.data.sectionId);
+  const timetableEntryId = typeof req.query.timetableEntryId === "string" ? req.query.timetableEntryId : undefined;
+  const students = await teacherAttendance.getTeacherStudents(teacher.id, query.data.subjectId, params.data.sectionId, timetableEntryId);
   if (!students) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
   res.json(GetTeacherSectionStudentsResponse.parse(students));
 });
@@ -146,8 +147,13 @@ router.put("/teacher/attendance", async (req, res): Promise<void> => {
   const teacher = mentorOnly(res); if (!teacher) return;
   const body = SubmitTeacherAttendanceBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "Invalid attendance submission." }); return; }
+  const timetableEntryId = typeof req.body?.timetableEntryId === "string" ? req.body.timetableEntryId : undefined;
   try {
-    const attendance = await teacherAttendance.submitTeacherAttendance(teacher.id, { ...body.data, date: isoDate(body.data.date) });
+    const attendance = await teacherAttendance.submitTeacherAttendance(teacher.id, {
+      ...body.data,
+      date: isoDate(body.data.date),
+      timetableEntryId,
+    });
     if (!attendance) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
     res.json(SubmitTeacherAttendanceResponse.parse(attendance));
   } catch (error) {
