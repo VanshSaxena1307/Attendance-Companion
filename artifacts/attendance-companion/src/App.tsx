@@ -6,7 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import Login from '@/pages/login';
 import { Attendance, Dashboard, Insights, Issues, Notifications, People, Profile, Requests, SettingsPage, TeacherAttendance } from '@/pages/main-pages';
-import { useGetCurrentUser } from '@workspace/api-client-react';
+import { setBaseUrl, useGetCurrentUser } from '@workspace/api-client-react';
 import {
   Route,
   Switch,
@@ -16,7 +16,7 @@ import {
 } from 'wouter';
 
 const queryClient = new QueryClient();
-
+setBaseUrl(import.meta.env.VITE_API_URL || null);
 function Authenticated({ children }: { children: (user: import('@workspace/api-client-react').CurrentUser) => ReactNode }) {
   const [, setLocation] = useLocation();
   const query = useGetCurrentUser();
