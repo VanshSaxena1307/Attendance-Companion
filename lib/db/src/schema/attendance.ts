@@ -1,4 +1,5 @@
 import { boolean, date, index, numeric, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -8,7 +9,66 @@ export const studentsTable = pgTable("students", { id: text("id").primaryKey().r
 export const teachersTable = pgTable("teachers", { id: text("id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }), teacherCode: text("teacher_code").notNull().unique(), mobile: text("mobile") });
 export const subjectsTable = pgTable("subjects", { id: text("id").primaryKey(), code: text("code").notNull().unique(), name: text("name").notNull(), semester: text("semester"), subjectType: text("subject_type").notNull(), teacher: text("teacher"), color: text("color").notNull().default("#5B6EE1") });
 export const teacherSubjectSectionsTable = pgTable("teacher_subject_sections", { id: text("id").primaryKey(), teacherId: text("teacher_id").notNull().references(() => teachersTable.id), subjectId: text("subject_id").notNull().references(() => subjectsTable.id), sectionId: text("section_id").notNull().references(() => sectionsTable.id), subjectType: text("subject_type").notNull() }, (t) => [unique("teacher_subject_section_unique").on(t.teacherId, t.subjectId, t.sectionId, t.subjectType), index("teacher_subject_section_lookup_idx").on(t.teacherId, t.sectionId)]);
-export const attendanceTable = pgTable("attendance", { id: text("id").primaryKey(), studentId: text("student_id").notNull().references(() => studentsTable.id), subjectId: text("subject_id").notNull().references(() => subjectsTable.id), sectionId: text("section_id").notNull().references(() => sectionsTable.id), date: date("date", { mode: "string" }).notNull(), status: text("status").notNull(), detail: text("detail").notNull().default("Imported from attendance workbook"), markedBy: text("marked_by").references(() => usersTable.id), markedAt: timestamp("marked_at", { withTimezone: true }).notNull().defaultNow(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow() }, (t) => [unique("attendance_student_subject_date_unique").on(t.studentId, t.subjectId, t.date), index("attendance_student_subject_idx").on(t.studentId, t.subjectId), index("attendance_section_subject_idx").on(t.sectionId, t.subjectId)]);
+export const lectureInstancesTable = pgTable("lecture_instances", {
+  id: text("id").primaryKey(),
+  timetableEntryId: text("timetable_entry_id").references(() => timetableEntriesTable.id, { onDelete: "set null" }),
+  sectionId: text("section_id").notNull().references(() => sectionsTable.id),
+  subjectId: text("subject_id").notNull().references(() => subjectsTable.id),
+  teacherId: text("teacher_id").references(() => teachersTable.id),
+  teacherName: text("teacher_name"),
+  teacherInitials: text("teacher_initials"),
+  actualTeacherId: text("actual_teacher_id").references(() => teachersTable.id),
+  date: date("date", { mode: "string" }).notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  room: text("room").notNull(),
+  batchType: text("batch_type").notNull(),
+  batch: text("batch").notNull(),
+  lectureType: text("lecture_type").notNull(),
+  status: text("status").notNull().default("SCHEDULED"),
+  attendanceStatus: text("attendance_status").notNull().default("UNMARKED"),
+  markedBy: text("marked_by").references(() => usersTable.id),
+  markedAt: timestamp("marked_at", { withTimezone: true }),
+  isAdhoc: boolean("is_adhoc").notNull().default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("lecture_instances_timetable_date_unique")
+    .on(t.timetableEntryId, t.date)
+    .where(sql`timetable_entry_id IS NOT NULL`),
+  uniqueIndex("lecture_instances_adhoc_slot_unique")
+    .on(t.sectionId, t.date, t.startTime, t.batchType, t.batch)
+    .where(sql`timetable_entry_id IS NULL`),
+  index("lecture_instances_section_date_idx").on(t.sectionId, t.date),
+  index("lecture_instances_teacher_date_idx").on(t.teacherId, t.date),
+  index("lecture_instances_subject_date_idx").on(t.subjectId, t.date),
+  index("lecture_instances_timetable_idx").on(t.timetableEntryId),
+]);
+
+export const attendanceTable = pgTable("attendance", {
+  id: text("id").primaryKey(),
+  studentId: text("student_id").notNull().references(() => studentsTable.id),
+  lectureInstanceId: text("lecture_instance_id").references(() => lectureInstancesTable.id),
+  subjectId: text("subject_id").notNull().references(() => subjectsTable.id),
+  sectionId: text("section_id").notNull().references(() => sectionsTable.id),
+  date: date("date", { mode: "string" }).notNull(),
+  status: text("status").notNull(),
+  detail: text("detail").notNull().default("Imported from attendance workbook"),
+  markedBy: text("marked_by").references(() => usersTable.id),
+  markedAt: timestamp("marked_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("attendance_student_instance_unique")
+    .on(t.studentId, t.lectureInstanceId)
+    .where(sql`lecture_instance_id IS NOT NULL`),
+  uniqueIndex("attendance_legacy_student_subject_date_unique")
+    .on(t.studentId, t.subjectId, t.date)
+    .where(sql`lecture_instance_id IS NULL`),
+  index("attendance_instance_idx").on(t.lectureInstanceId),
+  index("attendance_student_subject_idx").on(t.studentId, t.subjectId),
+  index("attendance_section_subject_idx").on(t.sectionId, t.subjectId),
+  index("attendance_section_date_idx").on(t.sectionId, t.date),
+]);
 export const exemptionRequestsTable = pgTable("exemption_requests", { id: text("id").primaryKey(), studentId: text("student_id").notNull().references(() => studentsTable.id), category: text("category").notNull(), reason: text("reason").notNull(), startDate: date("start_date", { mode: "string" }).notNull(), endDate: date("end_date", { mode: "string" }).notNull(), proofName: text("proof_name"), status: text("status").notNull(), submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(), reviewedAt: timestamp("reviewed_at", { withTimezone: true }), reviewer: text("reviewer"), reviewerRemarks: text("reviewer_remarks") });
 export const attendanceIssuesTable = pgTable("attendance_issues", { id: text("id").primaryKey(), studentId: text("student_id").notNull().references(() => studentsTable.id), subjectId: text("subject_id").notNull().references(() => subjectsTable.id), subjectName: text("subject_name").notNull(), date: date("date", { mode: "string" }).notNull(), issueType: text("issue_type").notNull(), description: text("description").notNull(), evidenceName: text("evidence_name"), status: text("status").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), reviewedAt: timestamp("reviewed_at", { withTimezone: true }), reviewer: text("reviewer"), reviewerRemarks: text("reviewer_remarks") });
 export const notificationsTable = pgTable("notifications", { id: text("id").primaryKey(), recipientId: text("recipient_id").notNull().references(() => usersTable.id), title: text("title").notNull(), message: text("message").notNull(), type: text("type").notNull(), relatedId: text("related_id"), read: boolean("read").notNull().default(false), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow() });
@@ -58,6 +118,8 @@ export const timetableEntriesTable = pgTable("timetable_entries", {
 export const insertUserSchema = createInsertSchema(usersTable).omit({ createdAt: true }); export const insertSubjectSchema = createInsertSchema(subjectsTable); export const insertAttendanceSchema = createInsertSchema(attendanceTable).omit({ createdAt: true, markedAt: true }); export const insertExemptionSchema = createInsertSchema(exemptionRequestsTable).omit({ submittedAt: true, reviewedAt: true }); export const insertIssueSchema = createInsertSchema(attendanceIssuesTable).omit({ createdAt: true, reviewedAt: true }); export const insertNotificationSchema = createInsertSchema(notificationsTable).omit({ createdAt: true }); export const insertSettingsSchema = createInsertSchema(settingsTable);
 export const insertTimetableSchema = createInsertSchema(timetablesTable).omit({ createdAt: true });
 export const insertTimetableEntrySchema = createInsertSchema(timetableEntriesTable).omit({ createdAt: true });
+export const insertLectureInstanceSchema = createInsertSchema(lectureInstancesTable).omit({ createdAt: true });
 export type User = z.infer<typeof insertUserSchema>; export type Subject = z.infer<typeof insertSubjectSchema>; export type Attendance = z.infer<typeof insertAttendanceSchema>; export type ExemptionRequest = z.infer<typeof insertExemptionSchema>; export type AttendanceIssue = z.infer<typeof insertIssueSchema>; export type Notification = z.infer<typeof insertNotificationSchema>; export type Settings = z.infer<typeof insertSettingsSchema>;
 export type Timetable = z.infer<typeof insertTimetableSchema>;
 export type TimetableEntry = z.infer<typeof insertTimetableEntrySchema>;
+export type LectureInstance = z.infer<typeof insertLectureInstanceSchema>;

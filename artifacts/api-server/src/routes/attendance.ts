@@ -140,7 +140,9 @@ router.get("/teacher/attendance", async (req, res): Promise<void> => {
   const query = GetTeacherAttendanceQueryParams.safeParse({ ...req.query, date: rawDate });
   if (!query.success) { res.status(400).json({ error: "subjectId, sectionId, and a YYYY-MM-DD date are required." }); return; }
   const dateStr = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : isoDate(query.data.date);
-  const attendance = await teacherAttendance.getTeacherAttendance(teacher.id, query.data.subjectId, query.data.sectionId, dateStr);
+  const timetableEntryId = typeof req.query.timetableEntryId === "string" ? req.query.timetableEntryId : undefined;
+  const lectureInstanceId = typeof req.query.lectureInstanceId === "string" ? req.query.lectureInstanceId : undefined;
+  const attendance = await teacherAttendance.getTeacherAttendance(teacher.id, query.data.subjectId, query.data.sectionId, dateStr, timetableEntryId, lectureInstanceId);
   if (!attendance) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
   res.json(GetTeacherAttendanceResponse.parse(attendance));
 });
@@ -150,11 +152,13 @@ router.put("/teacher/attendance", async (req, res): Promise<void> => {
   const body = SubmitTeacherAttendanceBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "Invalid attendance submission." }); return; }
   const timetableEntryId = typeof req.body?.timetableEntryId === "string" ? req.body.timetableEntryId : undefined;
+  const lectureInstanceId = typeof req.body?.lectureInstanceId === "string" ? req.body.lectureInstanceId : undefined;
   try {
     const attendance = await teacherAttendance.submitTeacherAttendance(teacher.id, {
       ...body.data,
       date: isoDate(body.data.date),
       timetableEntryId,
+      lectureInstanceId,
     });
     if (!attendance) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
     res.json(SubmitTeacherAttendanceResponse.parse(attendance));

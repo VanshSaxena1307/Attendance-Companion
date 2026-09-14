@@ -25,6 +25,7 @@ export type StudentScheduleContext = {
 
 export type StudentScheduledLecture = {
   timetableEntryId: string;
+  lectureInstanceId?: string | null;
   section: string;
   day: string;
   startTime: string;

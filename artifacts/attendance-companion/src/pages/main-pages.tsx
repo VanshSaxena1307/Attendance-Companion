@@ -66,13 +66,24 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   const activeSubjectId = selectedLecture ? (selectedLecture.subjectId ?? '') : (manualSelected?.subjectId ?? '');
   const activeSectionId = selectedLecture ? selectedLecture.sectionId : (manualSelected?.sectionId ?? '');
   const activeTimetableEntryId = selectedLecture ? selectedLecture.timetableEntryId : undefined;
+  const activeLectureInstanceId = selectedLecture?.lectureInstanceId ?? undefined;
 
   const rosterParams: any = { subjectId: activeSubjectId };
   if (activeTimetableEntryId) {
     rosterParams.timetableEntryId = activeTimetableEntryId;
   }
 
-  const attendanceParams = { subjectId: activeSubjectId, sectionId: activeSectionId, date };
+  const attendanceParams: any = {
+    subjectId: activeSubjectId,
+    sectionId: activeSectionId,
+    date,
+  };
+  if (activeTimetableEntryId) {
+    attendanceParams.timetableEntryId = activeTimetableEntryId;
+  }
+  if (activeLectureInstanceId) {
+    attendanceParams.lectureInstanceId = activeLectureInstanceId;
+  }
   const isEnabled = Boolean(activeSubjectId && activeSectionId);
 
   const roster = useGetTeacherSectionStudents(
@@ -83,7 +94,21 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
 
   const existing = useGetTeacherAttendance(
     attendanceParams,
-    { query: { enabled: isEnabled, queryKey: getGetTeacherAttendanceQueryKey(attendanceParams) } }
+    {
+      query: {
+        enabled: isEnabled,
+        queryKey: [
+          '/api/teacher/attendance',
+          {
+            subjectId: activeSubjectId,
+            sectionId: activeSectionId,
+            date,
+            timetableEntryId: activeTimetableEntryId,
+            lectureInstanceId: activeLectureInstanceId,
+          }
+        ]
+      }
+    }
   );
 
   const save = useSubmitTeacherAttendance();
@@ -149,6 +174,9 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
     if (activeTimetableEntryId) {
       payload.timetableEntryId = activeTimetableEntryId;
     }
+    if (activeLectureInstanceId) {
+      payload.lectureInstanceId = activeLectureInstanceId;
+    }
 
     save.mutate({ data: payload }, {
       onSuccess: () => {
@@ -156,7 +184,7 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
         queryClient.invalidateQueries({ queryKey: getMentorScheduleQueryKey(date) });
         queryClient.invalidateQueries({ queryKey: getMentorScheduleQueryKey() });
         queryClient.invalidateQueries({ queryKey: ['/api/student/schedule/today'] });
-        queryClient.invalidateQueries({ queryKey: getGetTeacherAttendanceQueryKey(attendanceParams) });
+        queryClient.invalidateQueries({ queryKey: ['/api/teacher/attendance'] });
         queryClient.invalidateQueries({ queryKey: ['/api/teacher/sections', activeSectionId, 'students'] });
       },
       onError: (err: any) => {

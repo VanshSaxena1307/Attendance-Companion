@@ -18,6 +18,7 @@ export type MentorScheduleContext = {
 
 export type MentorScheduledLecture = {
   timetableEntryId: string;
+  lectureInstanceId?: string | null;
   section: string;
   sectionId: string;
   day: string;

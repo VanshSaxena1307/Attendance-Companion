@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-
 import {
   attendanceTable,
   db,
+  lectureInstancesTable,
   sectionsTable,
   studentsTable,
   subjectsTable,
@@ -48,6 +49,7 @@ export type ClassState = "UPCOMING" | "IN_PROGRESS" | "COMPLETED";
 
 export type StudentScheduledLecture = {
   timetableEntryId: string;
+  lectureInstanceId: string | null;
   section: string;
   day: string;
   startTime: string;
@@ -68,6 +70,7 @@ export type StudentScheduledLecture = {
 
 export type MentorScheduledLecture = {
   timetableEntryId: string;
+  lectureInstanceId: string | null;
   section: string;
   sectionId: string;
   day: string;
@@ -241,9 +244,22 @@ export async function getStudentSchedule(
     return false;
   });
 
+  // Query existing lecture instances on dateStr
+  const instanceRows = await db
+    .select()
+    .from(lectureInstancesTable)
+    .where(eq(lectureInstancesTable.date, dateStr));
+  const instanceByTimetableEntry = new Map<string, typeof lectureInstancesTable.$inferSelect>();
+  for (const inst of instanceRows) {
+    if (inst.timetableEntryId) {
+      instanceByTimetableEntry.set(inst.timetableEntryId, inst);
+    }
+  }
+
   // Query student's attendance records on dateStr
   const attendanceRecords = await db
     .select({
+      lectureInstanceId: attendanceTable.lectureInstanceId,
       subjectId: attendanceTable.subjectId,
       status: attendanceTable.status,
     })
@@ -255,18 +271,32 @@ export async function getStudentSchedule(
       )
     );
 
-  const attendanceBySubject = new Map<string, string>();
+  const attendanceByInstance = new Map<string, string>();
+  const attendanceBySubjectLegacy = new Map<string, string>();
   for (const att of attendanceRecords) {
-    attendanceBySubject.set(att.subjectId, att.status);
+    if (att.lectureInstanceId) {
+      attendanceByInstance.set(att.lectureInstanceId, att.status);
+    } else {
+      attendanceBySubjectLegacy.set(att.subjectId, att.status);
+    }
   }
 
   const lectures: StudentScheduledLecture[] = filteredEntries.map((entry) => {
+    const instance = instanceByTimetableEntry.get(entry.id);
     let attendanceStatus: StudentLectureAttendanceStatus = "ATTENDANCE_NOT_UPLOADED";
 
     if (!entry.subjectId) {
       attendanceStatus = "ATTENDANCE_NOT_APPLICABLE";
     } else {
-      const recStatus = attendanceBySubject.get(entry.subjectId);
+      // First check match by lecture_instance_id
+      let recStatus: string | undefined;
+      if (instance && attendanceByInstance.has(instance.id)) {
+        recStatus = attendanceByInstance.get(instance.id);
+      } else if (!instance || instance.attendanceStatus === "UNMARKED") {
+        // Fall back safely to legacy subject attendance where instance not linked
+        recStatus = attendanceBySubjectLegacy.get(entry.subjectId);
+      }
+
       if (recStatus === "PRESENT") {
         attendanceStatus = "ATTENDANCE_UPLOADED_PRESENT";
       } else if (recStatus === "ABSENT") {
@@ -284,6 +314,7 @@ export async function getStudentSchedule(
 
     return {
       timetableEntryId: entry.id,
+      lectureInstanceId: instance?.id || null,
       section: student.sectionCode,
       day: entry.dayOfWeek,
       startTime: entry.startTime,
@@ -416,11 +447,32 @@ export async function getMentorSchedule(
 
     enrolledCount = enrolledRes?.count ?? 0;
 
-    if (entry.subjectId) {
+    const [instance] = await db
+      .select()
+      .from(lectureInstancesTable)
+      .where(
+        and(
+          eq(lectureInstancesTable.timetableEntryId, entry.id),
+          eq(lectureInstancesTable.date, dateStr)
+        )
+      );
+
+    if (instance) {
+      const [attRes] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(attendanceTable)
+        .where(eq(attendanceTable.lectureInstanceId, instance.id));
+
+      markedCount = attRes?.count ?? 0;
+      attendanceStatus = (markedCount > 0 || instance.attendanceStatus === "MARKED")
+        ? "ATTENDANCE_MARKED"
+        : "ATTENDANCE_NOT_MARKED";
+    } else if (entry.subjectId) {
       const markedWhereConditions = [
         eq(attendanceTable.subjectId, entry.subjectId),
         eq(attendanceTable.sectionId, entry.sectionId),
         eq(attendanceTable.date, dateStr),
+        sql`${attendanceTable.lectureInstanceId} IS NULL`,
       ];
       if (batchCondition) {
         markedWhereConditions.push(batchCondition);
@@ -440,6 +492,7 @@ export async function getMentorSchedule(
 
     lectures.push({
       timetableEntryId: entry.id,
+      lectureInstanceId: instance?.id || null,
       section: sectionCode,
       sectionId: entry.sectionId,
       day: entry.dayOfWeek,
