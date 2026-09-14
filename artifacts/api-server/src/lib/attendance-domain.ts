@@ -214,7 +214,6 @@ export async function findDevelopmentStudent(admissionNo: string, mobile: string
 }
 
 export async function findDevelopmentIdentity(role: AuthRole, identifier: string, mobile: string): Promise<{ user: CurrentUser; mobile: string } | undefined> {
-  if (process.env.NODE_ENV === "production") return undefined;
   if (role === "MENTOR") {
     const user = await postgresAttendance.findDevelopmentMentor(identifier, mobile);
     return user ? { user, mobile: mobile.replace(/\D/g, "") } : undefined;

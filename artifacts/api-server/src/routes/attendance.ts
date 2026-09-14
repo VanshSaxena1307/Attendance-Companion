@@ -29,7 +29,13 @@ const staffOnly = (req: Request, res: Response): boolean => {
   return true;
 };
 
-const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/" };
+const isProduction = process.env.NODE_ENV === "production";
+const cookieOptions = {
+  httpOnly: true,
+  sameSite: isProduction ? ("none" as const) : ("lax" as const),
+  secure: isProduction,
+  path: "/",
+};
 
 router.post("/auth/identity", async (req, res): Promise<void> => {
   const parsed = VerifyIdentityBody.safeParse(req.body);
