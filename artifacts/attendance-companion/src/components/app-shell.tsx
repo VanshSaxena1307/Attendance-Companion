@@ -26,7 +26,7 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
       <div className="mb-9 flex items-center justify-between px-2">
         <Link href="/" data-testid="link-brand" className="flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground"><BookOpen size={18}/></span>
-          <span><strong className="font-display text-[21px] font-semibold tracking-tight">attendance</strong><span className="block -mt-1 text-[11px] uppercase tracking-[.2em] text-sidebar-foreground/55">companion</span></span>
+          <span><strong className="font-display text-[22px] font-semibold tracking-tight">HAJIRI</strong><span className="block -mt-1 text-[10px] uppercase tracking-[.2em] text-sidebar-foreground/55">attendance</span></span>
         </Link>
         <button onClick={() => setOpen(false)} aria-label="Close menu" data-testid="button-close-menu" className="rounded-lg p-1 text-sidebar-foreground/60 hover:bg-sidebar-accent lg:hidden"><X size={18}/></button>
       </div>
@@ -46,25 +46,25 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
       </div>
     </aside>
     {open && <button onClick={() => setOpen(false)} aria-label="Close navigation overlay" data-testid="button-overlay-menu" className="fixed inset-0 z-30 bg-sidebar/30 lg:hidden"/>}
-    <main className="min-h-[100dvh] lg:pl-[248px]">
-      <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur-xl sm:px-8">
+    <main className="min-h-[100dvh] lg:pl-[248px] max-w-full overflow-x-hidden">
+      <header className="sticky top-0 z-20 flex h-14 sm:h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-3.5 sm:px-8 backdrop-blur-xl">
         <button onClick={() => setOpen(true)} aria-label="Open menu" data-testid="button-open-menu" className="rounded-xl p-2 text-foreground/70 hover:bg-muted lg:hidden"><Menu size={20}/></button>
         <div className="hidden text-[11px] font-medium uppercase tracking-[.18em] text-muted-foreground sm:block">{user.role === 'STUDENT' ? 'Personal attendance workspace' : 'Student attention workspace'}</div>
-        <div className="ml-auto flex items-center gap-3">
-          <Link href="/notifications" data-testid="link-header-notifications" className="relative rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Bell size={19}/><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive"/></Link>
-          <Link href="/profile/me" data-testid="link-header-profile" className="grid h-9 w-9 place-items-center rounded-full bg-secondary text-[11px] font-bold text-foreground ring-2 ring-background hover:ring-accent">{user.initials}</Link>
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <Link href="/notifications" data-testid="link-header-notifications" className="relative rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Bell size={18} className="sm:w-[19px] sm:h-[19px]"/><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive"/></Link>
+          <Link href="/profile/me" data-testid="link-header-profile" className="grid h-8 w-8 sm:h-9 sm:w-9 place-items-center rounded-full bg-secondary text-[10px] sm:text-[11px] font-bold text-foreground ring-2 ring-background hover:ring-accent">{user.initials}</Link>
         </div>
       </header>
-      <div className="px-5 pb-24 pt-7 sm:px-8 lg:px-10 lg:pb-10">{children}</div>
+      <div className="px-3.5 sm:px-8 lg:px-10 pt-4 sm:pt-7 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] sm:pb-24 lg:pb-10">{children}</div>
     </main>
-    <nav className="fixed bottom-0 left-0 right-0 z-30 flex h-[68px] items-center justify-around border-t border-border bg-card/95 px-2 backdrop-blur-xl lg:hidden">
-      {visible.slice(0, 5).map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`link-mobile-${label.toLowerCase()}`} className={`flex min-w-[54px] flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-medium ${active(href) ? 'text-primary' : 'text-muted-foreground'}`}><Icon size={18}/><span>{label === 'Overview' ? 'Home' : label}</span></Link>)}
+    <nav className="fixed bottom-0 left-0 right-0 z-30 flex h-[60px] sm:h-[68px] items-center justify-around border-t border-border bg-card/95 px-1 sm:px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
+      {visible.slice(0, 5).map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`link-mobile-${label.toLowerCase()}`} className={`flex min-w-[48px] sm:min-w-[54px] flex-col items-center gap-0.5 sm:gap-1 rounded-xl py-1 sm:py-2 text-[10px] font-medium ${active(href) ? 'text-primary' : 'text-muted-foreground'}`}><Icon size={17} className="sm:w-[18px] sm:h-[18px]"/><span>{label === 'Overview' ? 'Home' : label}</span></Link>)}
     </nav>
   </div>;
 }
 
 export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
-  return <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div className="animate-rise-in"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.2em] text-primary">{eyebrow || 'Attendance Companion'}</p><h1 className="font-display text-4xl leading-[1.05] tracking-[-.025em] text-foreground sm:text-[46px]">{title}</h1>{description && <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>}</div>{action && <div className="animate-rise-in delay-1 shrink-0">{action}</div>}</div>;
+  return <div className="mb-4 sm:mb-7 flex flex-col justify-between gap-3 sm:gap-4 md:flex-row md:items-end"><div className="animate-rise-in"><p className="mb-1 sm:mb-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-[.2em] text-primary">{eyebrow || 'HAJIRI'}</p><h1 className="font-display text-2xl sm:text-4xl lg:text-[46px] leading-[1.1] sm:leading-[1.05] tracking-[-.025em] text-foreground">{title}</h1>{description && <p className="mt-1.5 sm:mt-3 max-w-2xl text-xs sm:text-sm leading-relaxed sm:leading-6 text-muted-foreground">{description}</p>}</div>{action && <div className="animate-rise-in delay-1 shrink-0">{action}</div>}</div>;
 }
 
 export function Button({ children, onClick, variant = 'primary', type = 'button', disabled = false, className = '', testId }: { children: React.ReactNode; onClick?: () => void; variant?: 'primary'|'secondary'|'ghost'|'danger'; type?: 'button'|'submit'; disabled?: boolean; className?: string; testId?: string }) {

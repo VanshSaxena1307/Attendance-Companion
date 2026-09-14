@@ -349,7 +349,7 @@ export function MentorTodaySchedule({
         </div>
 
         {/* Date Navigator Controls */}
-        <div className="flex items-center gap-1.5 self-start sm:self-auto bg-muted/40 border border-border/60 rounded-2xl p-1">
+        <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto bg-muted/40 border border-border/60 rounded-xl sm:rounded-2xl p-1">
           <button
             type="button"
             onClick={handlePrevDay}
