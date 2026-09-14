@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { attendanceTable, db, lectureInstancesTable, sectionsTable, studentsTable, subjectsTable, teacherSubjectSectionsTable, teachersTable, timetableEntriesTable, usersTable, type LectureInstance } from "@workspace/db";
+import { attendanceTable, db, lectureInstancesTable, sectionsTable, settingsTable, studentsTable, subjectsTable, teacherSubjectSectionsTable, teachersTable, timetableEntriesTable, usersTable, type LectureInstance } from "@workspace/db";
 import { getLectureState, getLocalDateString } from "./postgres-timetable-repository";
 
 export type AttendanceStatus = "PRESENT" | "ABSENT" | "EXEMPTED" | "LATE" | "NOT_MARKED";
@@ -342,33 +342,9 @@ export async function submitTeacherAttendance(
   const assignment = await teacherAssignment(teacherId, input.subjectId, input.sectionId);
   if (!assignment) return undefined;
 
-  let lectureInstance: LectureInstance | undefined;
-  let batchCondition = undefined;
+  let targetInstanceId = input.lectureInstanceId;
 
-  if (input.lectureInstanceId) {
-    const [inst] = await db
-      .select()
-      .from(lectureInstancesTable)
-      .where(eq(lectureInstancesTable.id, input.lectureInstanceId));
-
-    if (!inst || (inst.teacherId !== teacherId && inst.actualTeacherId !== teacherId) || inst.sectionId !== input.sectionId || inst.subjectId !== input.subjectId) {
-      return undefined;
-    }
-
-    const classState = getLectureState(inst.startTime, inst.endTime, input.date);
-    if (classState === "UPCOMING") {
-      throw new TeacherInputError("Attendance cannot be marked before the scheduled lecture start time.");
-    }
-
-    lectureInstance = inst;
-    if (inst.batchType === "LAB") {
-      batchCondition = eq(studentsTable.labBatch, inst.batch);
-    } else if (inst.batchType === "PYTHON") {
-      batchCondition = eq(studentsTable.pythonBatch, inst.batch);
-    } else if (inst.batchType === "CLOUD") {
-      batchCondition = eq(studentsTable.cloudBatch, inst.batch);
-    }
-  } else if (input.timetableEntryId) {
+  if (!targetInstanceId && input.timetableEntryId) {
     const [entry] = await db
       .select()
       .from(timetableEntriesTable)
@@ -378,63 +354,154 @@ export async function submitTeacherAttendance(
       return undefined;
     }
 
-    // Lecture Start Time Rule: A mentor may mark attendance only when the scheduled lecture has started.
     const classState = getLectureState(entry.startTime, entry.endTime, input.date);
     if (classState === "UPCOMING") {
       throw new TeacherInputError("Attendance cannot be marked before the scheduled lecture start time.");
     }
 
-    lectureInstance = await getOrCreateLectureInstance(entry.id, input.date, teacherId);
-
-    if (entry.batchType === "LAB") {
-      batchCondition = eq(studentsTable.labBatch, entry.batch);
-    } else if (entry.batchType === "PYTHON") {
-      batchCondition = eq(studentsTable.pythonBatch, entry.batch);
-    } else if (entry.batchType === "CLOUD") {
-      batchCondition = eq(studentsTable.cloudBatch, entry.batch);
+    const lectureInstance = await getOrCreateLectureInstance(entry.id, input.date, teacherId);
+    if (!lectureInstance) {
+      return undefined;
     }
-  } else {
-    // Manual fallback: cannot mark attendance for future dates
+    targetInstanceId = lectureInstance.id;
+  }
+
+  if (targetInstanceId) {
+    return await db.transaction(async (tx) => {
+      // 1. Acquire exclusive row lock on the lecture instance
+      const [inst] = await tx
+        .select()
+        .from(lectureInstancesTable)
+        .where(eq(lectureInstancesTable.id, targetInstanceId))
+        .for("update");
+
+      if (!inst || (inst.teacherId !== teacherId && inst.actualTeacherId !== teacherId) || inst.sectionId !== input.sectionId || inst.subjectId !== input.subjectId) {
+        return undefined;
+      }
+
+      // 2. Lock check: If attendance already marked, reject immediately
+      if (inst.attendanceStatus === "MARKED") {
+        throw new TeacherInputError("Attendance for this lecture has already been submitted and is locked.");
+      }
+
+      const [existingRecord] = await tx
+        .select({ id: attendanceTable.id })
+        .from(attendanceTable)
+        .where(eq(attendanceTable.lectureInstanceId, inst.id))
+        .limit(1);
+
+      if (existingRecord) {
+        throw new TeacherInputError("Attendance for this lecture has already been submitted and is locked.");
+      }
+
+      // 3. Start time rule
+      const classState = getLectureState(inst.startTime, inst.endTime, input.date);
+      if (classState === "UPCOMING") {
+        throw new TeacherInputError("Attendance cannot be marked before the scheduled lecture start time.");
+      }
+
+      // 4. Batch condition and student enrollment validation
+      let batchCondition = undefined;
+      if (inst.batchType === "LAB") {
+        batchCondition = eq(studentsTable.labBatch, inst.batch);
+      } else if (inst.batchType === "PYTHON") {
+        batchCondition = eq(studentsTable.pythonBatch, inst.batch);
+      } else if (inst.batchType === "CLOUD") {
+        batchCondition = eq(studentsTable.cloudBatch, inst.batch);
+      }
+
+      const whereCondition = batchCondition
+        ? and(eq(studentsTable.sectionId, input.sectionId), batchCondition)
+        : eq(studentsTable.sectionId, input.sectionId);
+
+      const students = await tx
+        .select({ id: studentsTable.id, admissionNo: studentsTable.admissionNo })
+        .from(studentsTable)
+        .where(whereCondition);
+
+      const enrolled = new Set(students.map((student) => student.id));
+      const submitted = new Set(input.attendance.map((record) => record.studentId));
+      if (submitted.size !== input.attendance.length || submitted.size !== enrolled.size || [...submitted].some((studentId) => !enrolled.has(studentId))) {
+        throw new TeacherInputError("Attendance must include every enrolled student in this class/batch exactly once.");
+      }
+
+      const admissions = new Map(students.map((student) => [student.id, student.admissionNo]));
+      const markedAt = new Date();
+
+      // 5. Write attendance rows within transaction
+      await tx.insert(attendanceTable).values(input.attendance.map((record) => ({
+        id: `attendance-${crypto.createHash("sha1").update(`${admissions.get(record.studentId)}:${inst.id}`).digest("hex").slice(0, 16)}`,
+        studentId: record.studentId,
+        lectureInstanceId: inst.id,
+        subjectId: input.subjectId,
+        sectionId: input.sectionId,
+        date: input.date,
+        status: record.status,
+        detail: `Marked by ${assignment.teacherName}`,
+        markedBy: teacherId,
+        markedAt,
+      }))).onConflictDoUpdate({
+        target: [attendanceTable.studentId, attendanceTable.lectureInstanceId],
+        targetWhere: sql`lecture_instance_id IS NOT NULL`,
+        set: {
+          status: sql`excluded.status`,
+          sectionId: sql`excluded.section_id`,
+          detail: sql`excluded.detail`,
+          markedBy: teacherId,
+          markedAt,
+        },
+      });
+
+      // 6. Transition lecture instance to MARKED within transaction
+      await tx
+        .update(lectureInstancesTable)
+        .set({
+          status: "COMPLETED",
+          attendanceStatus: "MARKED",
+          markedBy: teacherId,
+          markedAt,
+        })
+        .where(eq(lectureInstancesTable.id, inst.id));
+
+      return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date, input.timetableEntryId, inst.id);
+    });
+  }
+
+  // Manual fallback (no timetable entry / lecture instance)
+  return await db.transaction(async (tx) => {
     const todayStr = getLocalDateString();
     if (input.date > todayStr) {
       throw new TeacherInputError("Attendance cannot be marked for future dates.");
     }
-  }
 
-  const whereCondition = batchCondition
-    ? and(eq(studentsTable.sectionId, input.sectionId), batchCondition)
-    : eq(studentsTable.sectionId, input.sectionId);
+    // Check if attendance records already exist for this slot
+    const existing = await tx
+      .select({ id: attendanceTable.id })
+      .from(attendanceTable)
+      .where(and(eq(attendanceTable.subjectId, input.subjectId), eq(attendanceTable.sectionId, input.sectionId), eq(attendanceTable.date, input.date)))
+      .for("update");
 
-  const students = await db
-    .select({ id: studentsTable.id, admissionNo: studentsTable.admissionNo })
-    .from(studentsTable)
-    .where(whereCondition);
+    if (existing.length > 0) {
+      throw new TeacherInputError("Attendance for this lecture has already been submitted and is locked.");
+    }
 
-  const enrolled = new Set(students.map((student) => student.id));
-  const submitted = new Set(input.attendance.map((record) => record.studentId));
-  if (submitted.size !== input.attendance.length || submitted.size !== enrolled.size || [...submitted].some((studentId) => !enrolled.has(studentId))) {
-    throw new TeacherInputError("Attendance must include every enrolled student in this class/batch exactly once.");
-  }
+    const students = await tx
+      .select({ id: studentsTable.id, admissionNo: studentsTable.admissionNo })
+      .from(studentsTable)
+      .where(eq(studentsTable.sectionId, input.sectionId));
 
-  const admissions = new Map(students.map((student) => [student.id, student.admissionNo]));
-  const markedAt = new Date();
+    const enrolled = new Set(students.map((student) => student.id));
+    const submitted = new Set(input.attendance.map((record) => record.studentId));
+    if (submitted.size !== input.attendance.length || submitted.size !== enrolled.size || [...submitted].some((studentId) => !enrolled.has(studentId))) {
+      throw new TeacherInputError("Attendance must include every enrolled student in this class/batch exactly once.");
+    }
 
-  if (lectureInstance) {
-    // Update lecture instance status
-    await db
-      .update(lectureInstancesTable)
-      .set({
-        status: "COMPLETED",
-        attendanceStatus: "MARKED",
-        markedBy: teacherId,
-        markedAt,
-      })
-      .where(eq(lectureInstancesTable.id, lectureInstance.id));
+    const admissions = new Map(students.map((student) => [student.id, student.admissionNo]));
+    const markedAt = new Date();
 
-    await db.insert(attendanceTable).values(input.attendance.map((record) => ({
-      id: `attendance-${crypto.createHash("sha1").update(`${admissions.get(record.studentId)}:${lectureInstance!.id}`).digest("hex").slice(0, 16)}`,
+    await tx.insert(attendanceTable).values(input.attendance.map((record) => ({
+      id: `attendance-${crypto.createHash("sha1").update(`${admissions.get(record.studentId)}:${input.subjectId}:${input.date}`).digest("hex").slice(0, 16)}`,
       studentId: record.studentId,
-      lectureInstanceId: lectureInstance!.id,
       subjectId: input.subjectId,
       sectionId: input.sectionId,
       date: input.date,
@@ -443,8 +510,8 @@ export async function submitTeacherAttendance(
       markedBy: teacherId,
       markedAt,
     }))).onConflictDoUpdate({
-      target: [attendanceTable.studentId, attendanceTable.lectureInstanceId],
-      targetWhere: sql`lecture_instance_id IS NOT NULL`,
+      target: [attendanceTable.studentId, attendanceTable.subjectId, attendanceTable.date],
+      targetWhere: sql`lecture_instance_id IS NULL`,
       set: {
         status: sql`excluded.status`,
         sectionId: sql`excluded.section_id`,
@@ -454,30 +521,57 @@ export async function submitTeacherAttendance(
       },
     });
 
-    return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date, input.timetableEntryId, lectureInstance.id);
+    return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date);
+  });
+}
+
+export type UserSettings = {
+  theme: "LIGHT" | "DARK" | "SYSTEM";
+  targetAttendance: number;
+  notificationsEnabled: boolean;
+};
+
+export async function getUserSettings(userId: string): Promise<UserSettings> {
+  const [row] = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.userId, userId));
+
+  if (!row) {
+    return { theme: "SYSTEM", targetAttendance: 75, notificationsEnabled: true };
   }
 
-  await db.insert(attendanceTable).values(input.attendance.map((record) => ({
-    id: `attendance-${crypto.createHash("sha1").update(`${admissions.get(record.studentId)}:${input.subjectId}:${input.date}`).digest("hex").slice(0, 16)}`,
-    studentId: record.studentId,
-    subjectId: input.subjectId,
-    sectionId: input.sectionId,
-    date: input.date,
-    status: record.status,
-    detail: `Marked by ${assignment.teacherName}`,
-    markedBy: teacherId,
-    markedAt,
-  }))).onConflictDoUpdate({
-    target: [attendanceTable.studentId, attendanceTable.subjectId, attendanceTable.date],
-    targetWhere: sql`lecture_instance_id IS NULL`,
-    set: {
-      status: sql`excluded.status`,
-      sectionId: sql`excluded.section_id`,
-      detail: sql`excluded.detail`,
-      markedBy: teacherId,
-      markedAt,
-    },
-  });
+  return {
+    theme: (row.theme as "LIGHT" | "DARK" | "SYSTEM") || "SYSTEM",
+    targetAttendance: Number(row.targetAttendance) || 75,
+    notificationsEnabled: row.notificationsEnabled ?? true,
+  };
+}
 
-  return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date);
+export async function updateUserSettings(userId: string, update: Partial<UserSettings>): Promise<UserSettings> {
+  const current = await getUserSettings(userId);
+  const next: UserSettings = {
+    theme: update.theme ?? current.theme,
+    targetAttendance: update.targetAttendance !== undefined ? Number(update.targetAttendance) : current.targetAttendance,
+    notificationsEnabled: update.notificationsEnabled !== undefined ? Boolean(update.notificationsEnabled) : current.notificationsEnabled,
+  };
+
+  await db
+    .insert(settingsTable)
+    .values({
+      userId,
+      theme: next.theme,
+      targetAttendance: String(next.targetAttendance),
+      notificationsEnabled: next.notificationsEnabled,
+    })
+    .onConflictDoUpdate({
+      target: [settingsTable.userId],
+      set: {
+        theme: next.theme,
+        targetAttendance: String(next.targetAttendance),
+        notificationsEnabled: next.notificationsEnabled,
+      },
+    });
+
+  return next;
 }

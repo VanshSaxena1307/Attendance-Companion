@@ -277,7 +277,7 @@ export function MentorLectureCard({
                 }`}
               >
                 <ClipboardCheck size={14} />
-                {isSelected ? 'Editing Attendance' : 'View / Edit Attendance'}
+                {isSelected ? 'Viewing Attendance (Locked 🔒)' : 'View Attendance (Locked)'}
               </button>
             ) : (
               <button

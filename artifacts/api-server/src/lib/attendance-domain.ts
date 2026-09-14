@@ -412,10 +412,22 @@ export function getSettings(userId: string): Settings {
   return settings.get(userId) ?? { theme: "SYSTEM", targetAttendance: 75, notificationsEnabled: true };
 }
 
+export async function getSettingsAsync(userId: string): Promise<Settings> {
+  const dbSettings = await postgresAttendance.getUserSettings(userId);
+  settings.set(userId, dbSettings);
+  return dbSettings;
+}
+
 export function updateSettings(userId: string, update: Partial<Settings>): Settings {
   const next = { ...getSettings(userId), ...update };
   settings.set(userId, next);
   return next;
+}
+
+export async function updateSettingsAsync(userId: string, update: Partial<Settings>): Promise<Settings> {
+  const dbSettings = await postgresAttendance.updateUserSettings(userId, update);
+  settings.set(userId, dbSettings);
+  return dbSettings;
 }
 
 export function getSubjectsList() {

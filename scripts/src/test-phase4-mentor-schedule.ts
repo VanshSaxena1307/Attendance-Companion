@@ -14,6 +14,7 @@ import {
   teacherSubjectSectionsTable,
   timetableEntriesTable,
   attendanceTable,
+  lectureInstancesTable,
   eq,
   and,
 } from "../../lib/db/src/index";
@@ -388,6 +389,26 @@ async function runPhase4Tests() {
 
     // ── 8. Attendance Marking: Mark All Present & Individual Absent ──
     console.log("\n[TEST 8] Attendance Marking & PostgreSQL Persistence");
+    // Ensure test slot is unlocked before initial save
+    await db.delete(attendanceTable).where(
+      and(
+        eq(attendanceTable.subjectId, theoryLec.subjectId),
+        eq(attendanceTable.sectionId, theoryLec.sectionId),
+        eq(attendanceTable.date, "2026-08-31")
+      )
+    );
+    await db.update(lectureInstancesTable).set({
+      attendanceStatus: "UNMARKED",
+      status: "SCHEDULED",
+      markedBy: null,
+      markedAt: null,
+    }).where(
+      and(
+        eq(lectureInstancesTable.timetableEntryId, theoryLec.timetableEntryId),
+        eq(lectureInstancesTable.date, "2026-08-31")
+      )
+    );
+
     // Use test date 2026-08-31 (a past completed lecture day)
     const absentStudent = theoryRoster[0];
     const presentStudents = theoryRoster.slice(1);
@@ -468,14 +489,14 @@ async function runPhase4Tests() {
     assert.strictEqual(presentLec.attendanceStatus, "ATTENDANCE_UPLOADED_PRESENT", "Student must see ATTENDANCE_UPLOADED_PRESENT");
     console.log(`✓ Present student schedule reflects: ${presentLec.attendanceStatus}`);
 
-    // ── 10. Reopen & Edit Attendance (No Row Duplication) ──
-    console.log("\n[TEST 10] Reopen & Edit: Upsert Integrity Check");
+    // ── 10. Reopen & Edit Attempt: Attendance Lock Check ──
+    console.log("\n[TEST 10] Reopen & Edit: Attendance Lock Verification");
     const countBefore = await db
       .select({ id: attendanceTable.id })
       .from(attendanceTable)
       .where(and(eq(attendanceTable.subjectId, theoryLec.subjectId), eq(attendanceTable.date, "2026-08-31")));
 
-    // Change absent student to PRESENT
+    // Attempt to change absent student to PRESENT
     const editedPayload = theoryRoster.map((s) => ({ studentId: s.id, status: "PRESENT" }));
 
     const resEdit = await fetch(`${baseUrl}/api/teacher/attendance`, {
@@ -489,23 +510,17 @@ async function runPhase4Tests() {
         attendance: editedPayload,
       }),
     });
-    assert.strictEqual(resEdit.status, 200);
+    assert.strictEqual(resEdit.status, 400, "Edit after save must be rejected with 400");
+    const editErr = (await resEdit.json()) as any;
+    assert.strictEqual(editErr.error, "Attendance for this lecture has already been submitted and is locked.");
 
     const countAfter = await db
       .select({ id: attendanceTable.id })
       .from(attendanceTable)
       .where(and(eq(attendanceTable.subjectId, theoryLec.subjectId), eq(attendanceTable.date, "2026-08-31")));
 
-    assert.strictEqual(countBefore.length, countAfter.length, "Row count must remain identical after edit (no duplicates)");
-
-    // Re-verify student schedule now reflects updated PRESENT
-    const resUpdatedStudent = await fetch(`${baseUrl}/api/student/schedule/today?date=2026-08-31`, {
-      headers: { Cookie: `ac_session=${sessionTokenAbsent}` },
-    });
-    const updatedStudentData = (await resUpdatedStudent.json()) as any;
-    const recheckedLec = updatedStudentData.lectures.find((l: any) => l.subjectId === theoryLec.subjectId);
-    assert.strictEqual(recheckedLec.attendanceStatus, "ATTENDANCE_UPLOADED_PRESENT");
-    console.log("✓ Edit attendance updated cleanly without duplicating records");
+    assert.strictEqual(countBefore.length, countAfter.length, "Row count must remain identical (no modification)");
+    console.log("✓ Edit after save strictly rejected by server (Attendance Lock enforced)");
 
     // ── 11. Date Navigation & Empty State ──
     console.log("\n[TEST 11] Date Navigation: Non-Teaching / Weekend Day");

@@ -15,7 +15,7 @@ import {
   GetTeacherSectionStudentsResponse, GetTeacherAttendanceQueryParams, GetTeacherAttendanceResponse,
   SubmitTeacherAttendanceBody, SubmitTeacherAttendanceResponse,
 } from "@workspace/api-zod";
-import { getUserFromRequest, sessionForUser, sessionMaxAgeMs, destroySession, findDevelopmentIdentity, isStaff, getDashboard, getSubjects, getHistory, getTrend, getExemptionsFor, getIssuesFor, getNotificationsFor, createExemption, reviewExemption, createIssue, reviewIssue, getSettings, updateSettings, getStudentSummaries, getStudentProfile, type AuthRole, type CurrentUser } from "../lib/attendance-domain";
+import { getUserFromRequest, sessionForUser, sessionMaxAgeMs, destroySession, findDevelopmentIdentity, isStaff, getDashboard, getSubjects, getHistory, getTrend, getExemptionsFor, getIssuesFor, getNotificationsFor, createExemption, reviewExemption, createIssue, reviewIssue, getSettings, updateSettings, getSettingsAsync, updateSettingsAsync, getStudentSummaries, getStudentProfile, type AuthRole, type CurrentUser } from "../lib/attendance-domain";
 import { AuthError, createAuthFlow, destroyAuthFlow, maskMobile, sendOtp, verifyOtp } from "../lib/authentication";
 import * as teacherAttendance from "../lib/postgres-attendance-repository";
 
@@ -292,14 +292,15 @@ router.get("/students/:id", async (req, res): Promise<void> => {
   res.json(GetStudentResponse.parse(profile));
 });
 
-router.get("/settings", (req, res): void => {
-  res.json(GetSettingsResponse.parse(getSettings((res.locals.user as CurrentUser).id)));
+router.get("/settings", async (req, res): Promise<void> => {
+  const current = await getSettingsAsync((res.locals.user as CurrentUser).id);
+  res.json(GetSettingsResponse.parse(current));
 });
 
-router.patch("/settings", (req, res): void => {
+router.patch("/settings", async (req, res): Promise<void> => {
   const parsed = UpdateSettingsBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const next = updateSettings((res.locals.user as CurrentUser).id, parsed.data);
+  const next = await updateSettingsAsync((res.locals.user as CurrentUser).id, parsed.data);
   res.json(UpdateSettingsResponse.parse(next));
 });
 

@@ -223,7 +223,11 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   };
 
   const isLectureLocked = selectedLecture ? selectedLecture.classState === 'UPCOMING' : false;
-  const isAttendanceBlocked = isLectureLocked || roster.isLoading || existing.isLoading || roster.isError || existing.isError;
+  const isAttendanceSubmitted = Boolean(
+    (selectedLecture && selectedLecture.attendanceStatus === 'ATTENDANCE_MARKED') ||
+    (existing.data && existing.data.length > 0)
+  );
+  const isAttendanceBlocked = isLectureLocked || isAttendanceSubmitted || roster.isLoading || existing.isLoading || roster.isError || existing.isError;
 
   const students = safeArray(roster.data);
   const present = roster.data && !roster.isError && existing.data && !existing.isError
@@ -267,6 +271,9 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
     save.mutate({ data: payload }, {
       onSuccess: () => {
         setMessage('Attendance saved. Student records now reflect these marks.');
+        if (selectedLecture) {
+          setSelectedLecture(prev => prev ? { ...prev, attendanceStatus: 'ATTENDANCE_MARKED' } : null);
+        }
         queryClient.invalidateQueries({ queryKey: getMentorScheduleQueryKey(date) });
         queryClient.invalidateQueries({ queryKey: getMentorScheduleQueryKey() });
         queryClient.invalidateQueries({ queryKey: ['/api/student/schedule/today'] });
@@ -426,12 +433,39 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
               </div>
             )}
 
+            {/* Attendance Locked Banner */}
+            {isAttendanceSubmitted && (
+              <div
+                data-testid="banner-attendance-locked"
+                className="mt-4 flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 p-4 text-primary"
+              >
+                <Lock size={18} className="shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    Attendance Locked 🔒
+                  </p>
+                  <p className="opacity-90">
+                    Attendance for this lecture has already been submitted and cannot be changed.
+                    {existing.data?.[0]?.markedAt && (
+                      <span className="block mt-0.5 text-[11px] opacity-75">
+                        Submitted at {new Date(existing.data[0].markedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Roster Header */}
             <div className="mt-6 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[.15em] text-primary">Class Roster</p>
                 <h2 className="mt-1 font-display text-xl sm:text-2xl">
-                  {isLectureLocked ? 'Enrolled Students (Read Only)' : 'Tap a student to toggle attendance'}
+                  {isAttendanceSubmitted
+                    ? 'Enrolled Students (Attendance Locked 🔒)'
+                    : isLectureLocked
+                    ? 'Enrolled Students (Read Only)'
+                    : 'Tap a student to toggle attendance'}
                 </h2>
               </div>
               <Button
@@ -516,8 +550,8 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                               : 'bg-primary text-primary-foreground hover:brightness-110 shadow-xs'
                           }`}
                         >
-                          {isPresent ? <X size={13} /> : <Check size={13} />}
-                          {isPresent ? 'Mark Absent' : 'Mark Present'}
+                          {isAttendanceSubmitted ? <Lock size={12} /> : isPresent ? <X size={13} /> : <Check size={13} />}
+                          {isAttendanceSubmitted ? (isPresent ? 'Present (Locked)' : 'Absent (Locked)') : isPresent ? 'Mark Absent' : 'Mark Present'}
                         </button>
                       </div>
                     </div>
@@ -603,8 +637,8 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                               : 'bg-primary text-primary-foreground hover:brightness-110 shadow-xs'
                           }`}
                         >
-                          {isPresent ? <X size={13} /> : <Check size={13} />}
-                          {isPresent ? 'Mark Absent' : 'Mark Present'}
+                          {isAttendanceSubmitted ? <Lock size={12} /> : isPresent ? <X size={13} /> : <Check size={13} />}
+                          {isAttendanceSubmitted ? (isPresent ? 'Present (Locked)' : 'Absent (Locked)') : isPresent ? 'Mark Absent' : 'Mark Present'}
                         </button>
                       </div>
                     </div>
@@ -635,21 +669,30 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
           <p
             aria-live="polite"
             className={`text-xs ${
-              message.startsWith('Attendance saved')
+              isAttendanceSubmitted
+                ? 'text-foreground font-semibold flex items-center gap-1.5'
+                : message.startsWith('Attendance saved')
                 ? 'text-primary font-medium'
                 : message || existing.isError
                 ? 'text-destructive font-medium'
                 : 'text-muted-foreground'
             }`}
           >
-            {message ||
+            {isAttendanceSubmitted ? (
+              <>
+                <Lock size={14} className="shrink-0 text-primary" />
+                <span>Attendance Locked 🔒 — Attendance for this lecture has already been submitted and cannot be changed.</span>
+              </>
+            ) : (
+              message ||
               (existing.isError
                 ? 'Existing attendance could not be loaded.'
                 : isLectureLocked
                 ? 'Marking locked until lecture starts'
                 : existing.isLoading
                 ? 'Loading existing attendance records…'
-                : 'Ready to save class attendance')}
+                : 'Ready to save class attendance')
+            )}
           </p>
           <Button
             onClick={submit}
@@ -657,7 +700,11 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
             testId="button-save-teacher-attendance"
             className="w-full sm:w-auto"
           >
-            {save.isPending ? 'Saving class…' : 'Save attendance'}
+            {isAttendanceSubmitted
+              ? 'Attendance Locked 🔒'
+              : save.isPending
+              ? 'Saving class…'
+              : 'Save attendance'}
           </Button>
         </div>
       )}
@@ -698,11 +745,182 @@ function Notifications({ user }: { user: CurrentUser }) {
 }
 
 function SettingsPage({ user }: { user: CurrentUser }) {
- const client=useQueryClient(); const query=useGetSettings(); const update=useUpdateSettings(); const [local,setLocal]=useState<Settings|null>(null); const settings=local||query.data; const save=(patch:Partial<Settings>)=>{const next={...settings,...patch} as Settings;setLocal(next);update.mutate({data:{theme:next.theme,targetAttendance:next.targetAttendance,notificationsEnabled:next.notificationsEnabled}},{onSuccess:(data)=>{setLocal(data);client.invalidateQueries({queryKey:getGetSettingsQueryKey()})}})};
- useEffect(()=>{const theme=settings?.theme; if(!theme)return; const dark=theme==='DARK'||(theme==='SYSTEM'&&window.matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.classList.toggle('dark',dark);},[settings?.theme]);
- if(query.isLoading&&!settings)return <AppShell user={user}><PageHeader title="Settings"/><LoadingBlock rows={4}/></AppShell>;
- if(query.isError&&!settings)return <AppShell user={user}><ErrorBlock retry={()=>query.refetch()}/></AppShell>;
- return <AppShell user={user}><PageHeader eyebrow="Preferences" title="Make it yours." description="Choose the amount of guidance that feels useful. Your attendance target is personal, not a campus-wide default."/><div className="mx-auto max-w-3xl space-y-4"><section className="rounded-2xl border border-border/70 bg-card p-6"><div className="flex items-start gap-4"><span className="grid h-10 w-10 place-items-center rounded-xl bg-secondary"><Target size={18}/></span><div><h2 className="font-display text-2xl">Attendance target</h2><p className="mt-1 text-sm text-muted-foreground">The line used across your dashboard and insights.</p></div></div><div className="mt-7 flex items-end gap-4"><input type="range" min="1" max="100" value={settings?.targetAttendance||75} onChange={e=>setLocal({...settings!,targetAttendance:Number(e.target.value)})} onMouseUp={e=>save({targetAttendance:Number((e.target as HTMLInputElement).value)})} onTouchEnd={e=>save({targetAttendance:Number((e.target as HTMLInputElement).value)})} data-testid="input-attendance-target" className="h-2 flex-1 accent-primary"/><span className="w-20 font-mono text-2xl">{settings?.targetAttendance}%</span></div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>1%</span><span>Recommended: 75%</span><span>100%</span></div></section><section className="rounded-2xl border border-border/70 bg-card p-6"><div className="flex items-start gap-4"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#d9e9df]"><SlidersHorizontal size={18}/></span><div><h2 className="font-display text-2xl">Appearance</h2><p className="mt-1 text-sm text-muted-foreground">A softer workspace for long study days.</p></div></div><div className="mt-6 grid grid-cols-3 gap-2">{(['LIGHT','SYSTEM','DARK'] as const).map(theme=><button key={theme} onClick={()=>save({theme})} data-testid={`button-theme-${theme.toLowerCase()}`} className={`rounded-xl border px-3 py-3 text-xs font-semibold ${settings?.theme===theme?'border-primary bg-secondary text-primary':'border-border text-muted-foreground hover:bg-muted'}`}>{theme[0]+theme.slice(1).toLowerCase()}</button>)}</div></section><section className="rounded-2xl border border-border/70 bg-card p-6"><div className="flex items-center justify-between gap-4"><div><h2 className="font-display text-2xl">Notifications</h2><p className="mt-1 text-sm text-muted-foreground">Useful updates, never noise.</p></div><button role="switch" aria-checked={settings?.notificationsEnabled} onClick={()=>save({notificationsEnabled:!settings?.notificationsEnabled})} data-testid="switch-notifications" className={`relative h-7 w-12 rounded-full transition-colors ${settings?.notificationsEnabled?'bg-primary':'bg-muted'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${settings?.notificationsEnabled?'translate-x-6':'translate-x-1'}`}/></button></div><p className="mt-5 text-xs text-muted-foreground">{settings?.notificationsEnabled?'You will see decisions, attendance changes, and review notes in your inbox.':'Notifications are paused. You can still check your inbox anytime.'}</p></section></div></AppShell>;
+  const client = useQueryClient();
+  const query = useGetSettings();
+  const update = useUpdateSettings();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [targetSlider, setTargetSlider] = useState<number | null>(null);
+
+  const settings = query.data;
+  const targetAttendance = targetSlider ?? (settings?.targetAttendance ?? 75);
+  const notificationsEnabled = settings?.notificationsEnabled ?? true;
+
+  const save = (patch: Partial<Settings>) => {
+    if (update.isPending || !settings) return;
+    setErrorMessage(null);
+
+    const next: Settings = {
+      theme: patch.theme ?? settings.theme,
+      targetAttendance: patch.targetAttendance ?? settings.targetAttendance,
+      notificationsEnabled: patch.notificationsEnabled !== undefined ? patch.notificationsEnabled : settings.notificationsEnabled,
+    };
+
+    update.mutate(
+      { data: next },
+      {
+        onSuccess: () => {
+          setErrorMessage(null);
+          client.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+        },
+        onError: (err: any) => {
+          const msg = err?.message || 'Failed to update setting. Please try again.';
+          setErrorMessage(msg);
+        },
+      }
+    );
+  };
+
+  useEffect(() => {
+    const theme = settings?.theme;
+    if (!theme) return;
+    const dark = theme === 'DARK' || (theme === 'SYSTEM' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  }, [settings?.theme]);
+
+  if (query.isLoading && !settings) return <AppShell user={user}><PageHeader title="Settings" /><LoadingBlock rows={4} /></AppShell>;
+  if (query.isError && !settings) return <AppShell user={user}><ErrorBlock retry={() => query.refetch()} /></AppShell>;
+
+  return (
+    <AppShell user={user}>
+      <PageHeader
+        eyebrow="Preferences"
+        title="Make it yours."
+        description="Choose the amount of guidance that feels useful. Your attendance target is personal, not a campus-wide default."
+      />
+      <div className="mx-auto max-w-3xl space-y-4">
+        {errorMessage && (
+          <div
+            role="alert"
+            data-testid="settings-error-alert"
+            className="flex items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs font-semibold text-destructive animate-fade-in"
+          >
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="shrink-0 p-1 hover:opacity-75"
+              aria-label="Dismiss error"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        <section className="rounded-2xl border border-border/70 bg-card p-6">
+          <div className="flex items-start gap-4">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-secondary">
+              <Target size={18} />
+            </span>
+            <div>
+              <h2 className="font-display text-2xl">Attendance target</h2>
+              <p className="mt-1 text-sm text-muted-foreground">The line used across your dashboard and insights.</p>
+            </div>
+          </div>
+          <div className="mt-7 flex items-end gap-4">
+            <input
+              type="range"
+              min="1"
+              max="100"
+              value={targetAttendance}
+              disabled={update.isPending}
+              onChange={e => setTargetSlider(Number(e.target.value))}
+              onMouseUp={e => {
+                const val = Number((e.target as HTMLInputElement).value);
+                setTargetSlider(null);
+                save({ targetAttendance: val });
+              }}
+              onTouchEnd={e => {
+                const val = Number((e.target as HTMLInputElement).value);
+                setTargetSlider(null);
+                save({ targetAttendance: val });
+              }}
+              data-testid="input-attendance-target"
+              className="h-2 flex-1 accent-primary"
+            />
+            <span className="w-20 font-mono text-2xl">{targetAttendance}%</span>
+          </div>
+          <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+            <span>1%</span>
+            <span>Recommended: 75%</span>
+            <span>100%</span>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-border/70 bg-card p-6">
+          <div className="flex items-start gap-4">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#d9e9df]">
+              <SlidersHorizontal size={18} />
+            </span>
+            <div>
+              <h2 className="font-display text-2xl">Appearance</h2>
+              <p className="mt-1 text-sm text-muted-foreground">A softer workspace for long study days.</p>
+            </div>
+          </div>
+          <div className="mt-6 grid grid-cols-3 gap-2">
+            {(['LIGHT', 'SYSTEM', 'DARK'] as const).map(theme => (
+              <button
+                key={theme}
+                disabled={update.isPending}
+                onClick={() => save({ theme })}
+                data-testid={`button-theme-${theme.toLowerCase()}`}
+                className={`rounded-xl border px-3 py-3 text-xs font-semibold transition-colors ${
+                  settings?.theme === theme
+                    ? 'border-primary bg-secondary text-primary'
+                    : 'border-border text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                {theme[0] + theme.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-border/70 bg-card p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-2xl">Notifications</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Useful updates, never noise.</p>
+            </div>
+            <div className="flex items-center justify-center min-h-[44px] min-w-[44px] shrink-0">
+              <button
+                role="switch"
+                type="button"
+                aria-checked={notificationsEnabled}
+                aria-label="Toggle notifications"
+                disabled={update.isPending}
+                onClick={() => save({ notificationsEnabled: !notificationsEnabled })}
+                data-testid="switch-notifications"
+                className={`relative h-7 w-12 rounded-full transition-all focus:outline-hidden focus:ring-2 focus:ring-primary/20 ${
+                  update.isPending ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:brightness-105'
+                } ${notificationsEnabled ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-card shadow-sm transition-transform ${
+                    notificationsEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+          <p className="mt-5 text-xs text-muted-foreground">
+            {notificationsEnabled
+              ? 'You will see decisions, attendance changes, and review notes in your inbox.'
+              : 'Notifications are paused. You can still check your inbox anytime.'}
+          </p>
+        </section>
+      </div>
+    </AppShell>
+  );
 }
 
 function People({ user }: { user: CurrentUser }) {
