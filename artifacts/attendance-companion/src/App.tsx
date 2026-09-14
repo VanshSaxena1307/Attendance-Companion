@@ -16,7 +16,8 @@ import {
 } from 'wouter';
 
 const queryClient = new QueryClient();
-setBaseUrl(import.meta.env.VITE_API_URL || null);
+const apiBaseUrl = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || null) : null;
+setBaseUrl(apiBaseUrl);
 function Authenticated({ children }: { children: (user: import('@workspace/api-client-react').CurrentUser) => ReactNode }) {
   const [, setLocation] = useLocation();
   const query = useGetCurrentUser();

@@ -1,4 +1,18 @@
 {
   "buildCommand": "pnpm run build",
-  "outputDirectory": "dist/public"
-}
+  "outputDirectory": "dist/public",
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "https://attendance-companion-1.onrender.com/api"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://attendance-companion-1.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
