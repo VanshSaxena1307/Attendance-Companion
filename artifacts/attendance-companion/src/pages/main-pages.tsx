@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, ClipboardCheck, Clock3, FilePlus2, FileWarning, Info, Layers, Lock, MapPin, Plus, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Target, TrendingUp, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowDownRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, ClipboardCheck, Clock3, FilePlus2, FileWarning, Info, Layers, Lock, MapPin, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal, Sparkles, Target, TrendingUp, Users, X } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AppShell, Button, EmptyBlock, ErrorBlock, LoadingBlock, PageHeader, StatusPill } from '@/components/app-shell';
 import { StudentTodaySchedule } from '@/components/student-today-schedule';
@@ -89,13 +89,13 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   const save = useSubmitTeacherAttendance();
 
   useEffect(() => {
-    if (!roster.data || roster.isError) {
+    if (!roster.data || roster.isError || !existing.data || existing.isError) {
       setMarks({});
       return;
     }
     const recorded = new Map((existing.data ?? []).map(item => [item.studentId, item.status]));
     setMarks(Object.fromEntries(roster.data.map(student => [student.id, recorded.get(student.id) ?? 'PRESENT'])));
-  }, [roster.data, roster.isError, existing.data]);
+  }, [roster.data, roster.isError, existing.data, existing.isError]);
 
   const handleDateChange = (newDate: string) => {
     setDate(newDate);
@@ -112,14 +112,15 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   };
 
   const isLectureLocked = selectedLecture ? selectedLecture.classState === 'UPCOMING' : false;
+  const isAttendanceBlocked = isLectureLocked || roster.isLoading || existing.isLoading || roster.isError || existing.isError;
 
   const students = safeArray(roster.data);
-  const present = roster.data && !roster.isError
-    ? Object.values(marks).filter(status => status === 'PRESENT').length
+  const present = roster.data && !roster.isError && existing.data && !existing.isError
+    ? students.filter(student => (marks[student.id] ?? 'PRESENT') === 'PRESENT').length
     : 0;
 
   const toggle = (studentId: string) => {
-    if (isLectureLocked) return;
+    if (isAttendanceBlocked) return;
     setMarks(current => ({
       ...current,
       [studentId]: current[studentId] === 'ABSENT' ? 'PRESENT' : 'ABSENT'
@@ -127,12 +128,12 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
   };
 
   const markAllPresent = () => {
-    if (isLectureLocked || !students.length || roster.isError) return;
+    if (isAttendanceBlocked || !students.length) return;
     setMarks(Object.fromEntries(students.map(student => [student.id, 'PRESENT'])) as Record<string, 'PRESENT' | 'ABSENT'>);
   };
 
   const submit = () => {
-    if (!activeSubjectId || !activeSectionId || !roster.data?.length || isLectureLocked) return;
+    if (!activeSubjectId || !activeSectionId || !roster.data?.length || isAttendanceBlocked) return;
     setMessage('');
 
     const payload: any = {
@@ -173,7 +174,7 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
         action={
           <Button
             onClick={markAllPresent}
-            disabled={!students.length || roster.isLoading || isLectureLocked}
+            disabled={!students.length || isAttendanceBlocked}
             testId="button-mark-all-present"
           >
             <Check size={16} /> Mark all present
@@ -272,13 +273,20 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
               </div>
 
               <div className="flex items-center gap-3 self-start sm:self-center">
-                {roster.isLoading ? (
+                {roster.isLoading || existing.isLoading ? (
                   <span className="font-mono text-xs sm:text-sm text-muted-foreground px-3 py-1 rounded-xl bg-background border border-border/70">
-                    Loading roster…
+                    {roster.isLoading ? 'Loading roster…' : 'Loading attendance…'}
                   </span>
                 ) : roster.isError ? (
                   <span className="font-mono text-xs sm:text-sm text-destructive font-semibold px-3 py-1 rounded-xl bg-destructive/10 border border-destructive/30">
                     Roster unavailable
+                  </span>
+                ) : existing.isError ? (
+                  <span
+                    data-testid="badge-existing-attendance-error"
+                    className="font-mono text-xs sm:text-sm text-destructive font-semibold px-3 py-1 rounded-xl bg-destructive/10 border border-destructive/30"
+                  >
+                    Attendance unavailable
                   </span>
                 ) : (
                   <span className="font-mono text-xs sm:text-sm font-semibold px-3 py-1 rounded-xl bg-background border border-border/70">
@@ -314,7 +322,7 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
               </div>
               <Button
                 onClick={markAllPresent}
-                disabled={!students.length || roster.isLoading || roster.isError || isLectureLocked}
+                disabled={!students.length || isAttendanceBlocked}
                 testId="button-roster-mark-all-present"
               >
                 <Check size={16} /> Mark all present
@@ -322,10 +330,29 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
             </div>
 
             {/* Student List */}
-            {roster.isLoading ? (
+            {roster.isLoading || existing.isLoading ? (
               <LoadingBlock rows={6} />
             ) : roster.isError ? (
-              <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }} />
+              <ErrorBlock retry={() => roster.refetch()} />
+            ) : existing.isError ? (
+              <div
+                data-testid="block-existing-attendance-error"
+                className="rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center"
+              >
+                <AlertCircle size={32} className="mx-auto text-destructive" />
+                <h3 className="mt-3 font-display text-lg text-destructive">Existing attendance could not be loaded.</h3>
+                <p className="mt-1 max-w-md mx-auto text-xs text-muted-foreground leading-relaxed">
+                  We could not verify recorded attendance for this lecture. To prevent overwriting existing data with default marks, attendance controls have been locked.
+                </p>
+                <Button
+                  onClick={() => existing.refetch()}
+                  variant="secondary"
+                  className="mt-4"
+                  testId="button-retry-existing-attendance"
+                >
+                  <RefreshCw size={13} className="mr-1.5" /> Retry
+                </Button>
+              </div>
             ) : students.length === 0 ? (
               <EmptyBlock
                 title="No students enrolled in this batch"
@@ -364,11 +391,11 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                         <StatusPill status={status} />
                         <button
                           type="button"
-                          disabled={isLectureLocked}
+                          disabled={isAttendanceBlocked}
                           onClick={() => toggle(student.id)}
                           data-testid={`button-attendance-${student.id}`}
                           className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
-                            isLectureLocked
+                            isAttendanceBlocked
                               ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
                               : isPresent
                               ? 'border border-destructive/30 text-destructive hover:bg-destructive/10'
@@ -393,10 +420,29 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                 {manualSelected.subjectName} · {manualSelected.sectionCode}
               </h2>
             </div>
-            {roster.isLoading ? (
+            {roster.isLoading || existing.isLoading ? (
               <LoadingBlock rows={6} />
             ) : roster.isError ? (
-              <ErrorBlock retry={() => { roster.refetch(); existing.refetch(); }} />
+              <ErrorBlock retry={() => roster.refetch()} />
+            ) : existing.isError ? (
+              <div
+                data-testid="block-existing-attendance-error-manual"
+                className="rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center"
+              >
+                <AlertCircle size={32} className="mx-auto text-destructive" />
+                <h3 className="mt-3 font-display text-lg text-destructive">Existing attendance could not be loaded.</h3>
+                <p className="mt-1 max-w-md mx-auto text-xs text-muted-foreground leading-relaxed">
+                  We could not verify recorded attendance for this class. To prevent overwriting existing data with default marks, attendance controls have been locked.
+                </p>
+                <Button
+                  onClick={() => existing.refetch()}
+                  variant="secondary"
+                  className="mt-4"
+                  testId="button-retry-existing-attendance-manual"
+                >
+                  <RefreshCw size={13} className="mr-1.5" /> Retry
+                </Button>
+              </div>
             ) : students.length === 0 ? (
               <EmptyBlock title="No students found" detail="No students found for this section." />
             ) : (
@@ -432,10 +478,13 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
                         <StatusPill status={status} />
                         <button
                           type="button"
+                          disabled={isAttendanceBlocked}
                           onClick={() => toggle(student.id)}
                           data-testid={`button-attendance-${student.id}`}
                           className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
-                            isPresent
+                            isAttendanceBlocked
+                              ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
+                              : isPresent
                               ? 'border border-destructive/30 text-destructive hover:bg-destructive/10'
                               : 'bg-primary text-primary-foreground hover:brightness-110 shadow-xs'
                           }`}
@@ -474,16 +523,23 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
             className={`text-xs ${
               message.startsWith('Attendance saved')
                 ? 'text-primary font-medium'
-                : message
+                : message || existing.isError
                 ? 'text-destructive font-medium'
                 : 'text-muted-foreground'
             }`}
           >
-            {message || (isLectureLocked ? 'Marking locked until lecture starts' : 'Ready to save class attendance')}
+            {message ||
+              (existing.isError
+                ? 'Existing attendance could not be loaded.'
+                : isLectureLocked
+                ? 'Marking locked until lecture starts'
+                : existing.isLoading
+                ? 'Loading existing attendance records…'
+                : 'Ready to save class attendance')}
           </p>
           <Button
             onClick={submit}
-            disabled={!students.length || save.isPending || roster.isLoading || isLectureLocked}
+            disabled={!students.length || save.isPending || isAttendanceBlocked}
             testId="button-save-teacher-attendance"
           >
             {save.isPending ? 'Saving class…' : 'Save attendance'}
