@@ -22,7 +22,55 @@ function MetricCard({ label, value, note, tone = 'teal', icon: Icon }: { label:s
 function ProgressBar({ value, target, color }: { value:number; target:number; color?:string }) { return <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted"><div className="absolute inset-y-0 left-0 rounded-full transition-all duration-700" style={{width:`${Math.min(value,100)}%`, background: color || 'hsl(var(--primary))'}}/><div className="absolute inset-y-[-2px] w-px bg-foreground/40" style={{left:`${target}%`}}/></div>; }
 
 function SubjectRow({ subject, compact=false }: { subject: SubjectAttendance; compact?: boolean }) {
-  return <Link href="/attendance" data-testid={`link-subject-${subject.id}`} className="group block rounded-xl sm:rounded-2xl border border-border/70 bg-card p-3 sm:p-4 transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"><div className="flex items-start justify-between gap-2.5 sm:gap-3"><div className="flex min-w-0 items-start gap-2.5 sm:gap-3"><span className="mt-0.5 grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-lg sm:rounded-xl text-[10px] font-bold" style={{background:`${subject.color}22`,color:subject.color}}>{subject.code.slice(0,2)}</span><div className="min-w-0"><p className="truncate text-xs sm:text-sm font-semibold">{subject.name}</p><p className="mt-0.5 truncate text-[11px] sm:text-xs text-muted-foreground">{subject.code} · {subject.teacher}</p></div></div><div className="text-right shrink-0"><p className="font-mono text-base sm:text-xl font-bold leading-none sm:leading-normal">{pct(subject.percentage)}</p><div className="mt-1"><StatusPill status={subject.status}/></div></div></div><div className="mt-2.5 sm:mt-4 flex items-center gap-2.5 sm:gap-3"><ProgressBar value={subject.percentage} target={subject.target} color={subject.color}/><span className="shrink-0 font-mono text-[10px] text-muted-foreground">{subject.present}/{subject.total}</span></div>{!compact && <p className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] text-muted-foreground">{subject.percentage >= subject.target ? `${(subject.percentage-subject.target).toFixed(1)} points above target` : `${(subject.target-subject.percentage).toFixed(1)} points to target`}</p>}</Link>;
+  return (
+    <Link
+      href="/attendance"
+      data-testid={`link-subject-${subject.id}`}
+      className="group block rounded-xl sm:rounded-2xl border border-border/70 bg-card p-3 sm:p-4 transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 sm:gap-3">
+        <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
+          <span
+            className="mt-0.5 grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-lg sm:rounded-xl text-[10px] font-bold"
+            style={{ background: `${subject.color}22`, color: subject.color }}
+          >
+            {subject.code.slice(0, 2)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-semibold text-foreground break-words sm:truncate">{subject.name}</p>
+            <p className="mt-0.5 text-[11px] sm:text-xs text-muted-foreground break-words sm:truncate">
+              {subject.code} · {subject.teacher}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between sm:flex-col sm:items-end sm:justify-start shrink-0 pt-1.5 sm:pt-0 border-t border-border/40 sm:border-t-0">
+          <div className="order-2 sm:order-1 sm:text-right">
+            <p className="font-mono text-base sm:text-xl font-bold leading-none sm:leading-normal">
+              {pct(subject.percentage)}
+            </p>
+          </div>
+          <div className="order-1 sm:order-2 sm:mt-1">
+            <StatusPill status={subject.status} />
+          </div>
+        </div>
+      </div>
+      <div className="mt-2.5 sm:mt-4 flex items-center gap-2.5 sm:gap-3">
+        <div className="flex-1 min-w-0">
+          <ProgressBar value={subject.percentage} target={subject.target} color={subject.color} />
+        </div>
+        <span className="shrink-0 font-mono text-[11px] sm:text-[10px] font-medium text-muted-foreground">
+          {subject.present}/{subject.total}
+        </span>
+      </div>
+      {!compact && (
+        <p className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] text-muted-foreground">
+          {subject.percentage >= subject.target
+            ? `${(subject.percentage - subject.target).toFixed(1)} points above target`
+            : `${(subject.target - subject.percentage).toFixed(1)} points to target`}
+        </p>
+      )}
+    </Link>
+  );
 }
 
 function Dashboard({ user }: { user: CurrentUser }) {
@@ -39,7 +87,45 @@ function Attendance({ user }: { user: CurrentUser }) {
   const subjectQuery = useGetSubjectAttendance(); const subjects = safeArray(subjectQuery.data);
   const params = useMemo(() => ({ subject: subject || undefined, status: status ? status as GetAttendanceHistoryStatus : undefined, page: 1, pageSize: 50 }), [subject,status]);
   const history = useGetAttendanceHistory(params); const records = history.data?.items || [];
-  return <AppShell user={user}><PageHeader eyebrow="Attendance" title="Know where you stand." description="A transparent view of every subject and every marked class. Your target is the line, not a judgment." action={<Link href="/issues" data-testid="link-report-from-attendance" className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-primary px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-[13px] font-semibold text-primary-foreground hover:brightness-110"><FilePlus2 size={15}/> Report a discrepancy</Link>}/><div className="mb-4 sm:mb-6 flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-none">{['All subjects', ...subjects.map(s=>s.code)].map((item,i)=><button key={item} onClick={()=>setSubject(i===0?'':subjects[i-1]?.id || '')} data-testid={`button-filter-subject-${i}`} className={`whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold transition-colors ${(!subject&&i===0)||(subject&&item===subjects.find(s=>s.id===subject)?.code) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}>{item}</button>)}</div><div className="grid gap-3 sm:gap-4 md:grid-cols-2">{subjectQuery.isLoading ? <LoadingBlock rows={4}/> : subjects.map(s=><SubjectRow key={s.id} subject={s}/>)}</div><section className="mt-5 sm:mt-7 rounded-xl sm:rounded-2xl border border-border/70 bg-card p-4 sm:p-6"><div className="mb-4 sm:mb-5 flex flex-col gap-3 sm:gap-4 md:flex-row md:items-end md:justify-between"><div><p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[.15em] text-primary">Date-wise history</p><h2 className="mt-0.5 sm:mt-1 font-display text-xl sm:text-2xl">What was marked</h2></div><div className="flex flex-wrap items-center gap-2"><select value={status} onChange={e=>setStatus(e.target.value)} data-testid="select-history-status" className="rounded-xl border border-input bg-background px-3 py-1.5 sm:py-2 text-xs outline-none focus:ring-2 focus:ring-ring"><option value="">Every status</option><option value="PRESENT">Present</option><option value="ABSENT">Absent</option><option value="LATE">Late</option><option value="EXEMPTED">Exempted</option></select><Button variant="ghost" onClick={()=>{setSubject('');setStatus('')}} testId="button-clear-filters" className="px-2.5 py-1.5 text-xs"><X size={14}/> Clear</Button></div></div>{history.isLoading ? <LoadingBlock rows={5}/> : history.isError ? <ErrorBlock retry={()=>history.refetch()}/> : records.length === 0 ? <EmptyBlock title="No classes match that filter" detail="Try widening the filters to see more of your attendance history."/> : <div className="overflow-x-auto -mx-1 sm:mx-0"><table className="w-full min-w-[540px] sm:min-w-[630px] text-left"><thead><tr className="border-b border-border text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground"><th className="pb-3">Date</th><th className="pb-3">Subject</th><th className="pb-3">Mark</th><th className="pb-3">Details</th></tr></thead><tbody>{records.map((r,i)=><tr key={`${r.date}-${r.subjectId}-${i}`} data-testid={`row-attendance-${i}`} className="border-b border-border/60 last:border-0"><td className="py-3 sm:py-3.5 font-mono text-xs whitespace-nowrap">{fmtDate(r.date)}</td><td className="py-3 sm:py-3.5 pr-2"><p className="text-xs sm:text-sm font-semibold">{r.subjectName}</p><p className="text-[11px] text-muted-foreground">{r.subjectCode}</p></td><td className="py-3 sm:py-3.5 whitespace-nowrap"><StatusPill status={r.status}/></td><td className="py-3 sm:py-3.5 text-xs text-muted-foreground">{r.detail}</td></tr>)}</tbody></table></div>}</section></AppShell>;
+  return <AppShell user={user}><PageHeader eyebrow="Attendance" title="Know where you stand." description="A transparent view of every subject and every marked class. Your target is the line, not a judgment." action={<Link href="/issues" data-testid="link-report-from-attendance" className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-primary px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-[13px] font-semibold text-primary-foreground hover:brightness-110"><FilePlus2 size={15}/> Report a discrepancy</Link>}/><div className="mb-4 sm:mb-6 flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-none">{['All subjects', ...subjects.map(s=>s.code)].map((item,i)=><button key={item} onClick={()=>setSubject(i===0?'':subjects[i-1]?.id || '')} data-testid={`button-filter-subject-${i}`} className={`whitespace-nowrap rounded-full border px-3 sm:px-3.5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold transition-colors ${(!subject&&i===0)||(subject&&item===subjects.find(s=>s.id===subject)?.code) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}>{item}</button>)}</div><div className="grid gap-3 sm:gap-4 md:grid-cols-2">{subjectQuery.isLoading ? <LoadingBlock rows={4}/> : subjects.map(s=><SubjectRow key={s.id} subject={s}/>)}</div><section className="mt-5 sm:mt-7 rounded-xl sm:rounded-2xl border border-border/70 bg-card p-4 sm:p-6"><div className="mb-4 sm:mb-5 flex flex-col gap-3 sm:gap-4 md:flex-row md:items-end md:justify-between"><div><p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[.15em] text-primary">Date-wise history</p><h2 className="mt-0.5 sm:mt-1 font-display text-xl sm:text-2xl">What was marked</h2></div><div className="flex flex-wrap items-center gap-2"><select value={status} onChange={e=>setStatus(e.target.value)} data-testid="select-history-status" className="rounded-xl border border-input bg-background px-3 py-1.5 sm:py-2 text-xs outline-none focus:ring-2 focus:ring-ring"><option value="">Every status</option><option value="PRESENT">Present</option><option value="ABSENT">Absent</option><option value="LATE">Late</option><option value="EXEMPTED">Exempted</option></select><Button variant="ghost" onClick={()=>{setSubject('');setStatus('')}} testId="button-clear-filters" className="px-2.5 py-1.5 text-xs"><X size={14}/> Clear</Button></div></div>{history.isLoading ? <LoadingBlock rows={5}/> : history.isError ? <ErrorBlock retry={()=>history.refetch()}/> : records.length === 0 ? <EmptyBlock title="No classes match that filter" detail="Try widening the filters to see more of your attendance history."/> : <>
+    {/* Mobile History View (<sm) */}
+    <div className="sm:hidden divide-y divide-border/60">
+      {records.map((r, i) => (
+        <div key={`${r.date}-${r.subjectId}-${i}`} data-testid={`row-attendance-${i}`} className="py-3 first:pt-0 last:pb-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-xs font-semibold text-muted-foreground">{fmtDate(r.date)}</span>
+            <StatusPill status={r.status} />
+          </div>
+          <div className="mt-1.5 min-w-0">
+            <p className="text-xs font-semibold text-foreground leading-snug">{r.subjectName}</p>
+            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{r.subjectCode}</p>
+          </div>
+          {r.detail && <p className="mt-1 text-xs text-muted-foreground/90 leading-relaxed">{r.detail}</p>}
+        </div>
+      ))}
+    </div>
+
+    {/* Desktop History Table (sm+) */}
+    <div className="hidden sm:block overflow-x-auto">
+      <table className="w-full min-w-[630px] text-left">
+        <thead>
+          <tr className="border-b border-border text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground">
+            <th className="pb-3">Date</th><th className="pb-3">Subject</th><th className="pb-3">Mark</th><th className="pb-3">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((r, i) => (
+            <tr key={`${r.date}-${r.subjectId}-${i}`} data-testid={`row-attendance-desktop-${i}`} className="border-b border-border/60 last:border-0">
+              <td className="py-3 sm:py-3.5 font-mono text-xs whitespace-nowrap">{fmtDate(r.date)}</td>
+              <td className="py-3 sm:py-3.5 pr-2"><p className="text-xs sm:text-sm font-semibold">{r.subjectName}</p><p className="text-[11px] text-muted-foreground">{r.subjectCode}</p></td>
+              <td className="py-3 sm:py-3.5 whitespace-nowrap"><StatusPill status={r.status}/></td>
+              <td className="py-3 sm:py-3.5 text-xs text-muted-foreground">{r.detail}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>}</section></AppShell>;
 }
 
 export function TeacherAttendance({ user }: { user: CurrentUser }) {

@@ -110,10 +110,7 @@ const developmentIdentityFixtures: Array<{
   { userId: "hod-rajesh", role: "HOD", identifier: "HOD-CSE-1001", mobile: "9012562896" },
 ];
 
-// Session state holds the identity established by the OTP flow.  Development
-// teachers come from PostgreSQL rather than the legacy fixture list, so a
-// session must not attempt to resolve them back through that list.
-const activeSessions = new Map<string, { user: CurrentUser; expiresAt: number }>();
+
 
 const subjects: Subject[] = [
   { id: "dsa", code: "25CS303", name: "Data Structures", teacher: "Dr. Malvika Gupta", color: "#5B6EE1" },
@@ -176,33 +173,95 @@ export function getUsers(): CurrentUser[] {
   return users;
 }
 
+type SessionPayload = {
+  u: CurrentUser;
+  exp: number;
+  iat: number;
+  jti: string;
+};
+
+const activeSessions = new Map<string, { user: CurrentUser; expiresAt: number }>();
+const revokedTokens = new Set<string>();
+
+function getSessionSecret(): string {
+  if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.trim().length >= 16) {
+    return process.env.SESSION_SECRET.trim();
+  }
+  const seed = process.env.DATABASE_URL || "hajiri-stable-session-secret-key-salt-32ch";
+  return crypto.createHash("sha256").update(`${seed}:hajiri-session-salt-v1`).digest("hex");
+}
+
 export function getUserById(id: string): CurrentUser | undefined {
   return users.find((user) => user.id === id);
 }
 
 export function getUserFromRequest(req: Request): CurrentUser | undefined {
   const raw = req.cookies?.ac_session;
-  if (typeof raw === "string") {
-    const session = activeSessions.get(raw);
-    if (session) {
-      if (session.expiresAt <= Date.now()) {
-        activeSessions.delete(raw);
-      } else {
-        return session.user;
+  if (typeof raw !== "string" || !raw) return undefined;
+
+  // Check stateless HMAC token first
+  const dotIndex = raw.lastIndexOf(".");
+  if (dotIndex > 0) {
+    const payloadB64 = raw.slice(0, dotIndex);
+    const sig = raw.slice(dotIndex + 1);
+    const secret = getSessionSecret();
+    const expectedSig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
+    if (sig.length === expectedSig.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+      try {
+        const payload: SessionPayload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+        if (payload && typeof payload.exp === "number" && payload.exp > Date.now()) {
+          if (!revokedTokens.has(payload.jti)) {
+            return payload.u;
+          }
+        }
+      } catch {
+        // Invalid JSON payload
       }
     }
   }
+
+  // Fallback to in-memory sessions for legacy tokens during transition
+  const legacy = activeSessions.get(raw);
+  if (legacy) {
+    if (legacy.expiresAt <= Date.now()) {
+      activeSessions.delete(raw);
+    } else {
+      return legacy.user;
+    }
+  }
+
   return undefined;
 }
 
 export function sessionForUser(user: CurrentUser): string {
-  const token = crypto.randomBytes(32).toString("base64url");
-  activeSessions.set(token, { user, expiresAt: Date.now() + numberEnv("AUTH_SESSION_TTL_MS", 1000 * 60 * 60 * 8) });
-  return token;
+  const exp = Date.now() + sessionMaxAgeMs();
+  const iat = Date.now();
+  const jti = crypto.randomBytes(16).toString("base64url");
+  const payload: SessionPayload = { u: user, exp, iat, jti };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const secret = getSessionSecret();
+  const sig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
+  return `${payloadB64}.${sig}`;
 }
 
 export function destroySession(token: unknown): void {
-  if (typeof token === "string") activeSessions.delete(token);
+  if (typeof token !== "string" || !token) return;
+  activeSessions.delete(token);
+  const dotIndex = token.lastIndexOf(".");
+  if (dotIndex > 0) {
+    try {
+      const payloadB64 = token.slice(0, dotIndex);
+      const payload: SessionPayload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+      if (payload?.jti) {
+        revokedTokens.add(payload.jti);
+        if (revokedTokens.size > 10000) {
+          revokedTokens.clear();
+        }
+      }
+    } catch {
+      // Ignore parse failure on revocation
+    }
+  }
 }
 
 export function sessionMaxAgeMs(): number {

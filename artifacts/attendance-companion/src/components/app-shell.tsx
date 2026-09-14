@@ -57,8 +57,32 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
       </header>
       <div className="px-3.5 sm:px-8 lg:px-10 pt-4 sm:pt-7 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] sm:pb-24 lg:pb-10">{children}</div>
     </main>
-    <nav className="fixed bottom-0 left-0 right-0 z-30 flex h-[60px] sm:h-[68px] items-center justify-around border-t border-border bg-card/95 px-1 sm:px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
-      {visible.slice(0, 5).map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`link-mobile-${label.toLowerCase()}`} className={`flex min-w-[48px] sm:min-w-[54px] flex-col items-center gap-0.5 sm:gap-1 rounded-xl py-1 sm:py-2 text-[10px] font-medium ${active(href) ? 'text-primary' : 'text-muted-foreground'}`}><Icon size={17} className="sm:w-[18px] sm:h-[18px]"/><span>{label === 'Overview' ? 'Home' : label}</span></Link>)}
+    <nav className="fixed bottom-0 left-0 right-0 z-30 flex h-[62px] sm:h-[70px] items-center justify-around border-t border-border bg-card/95 px-1 sm:px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
+      {visible.slice(0, 5).map(({ href, label, icon: Icon }) => {
+        const isSelected = active(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            data-testid={`link-mobile-${label.toLowerCase()}`}
+            className={`relative flex min-h-[46px] min-w-[54px] sm:min-w-[62px] flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1 text-[10px] transition-all duration-200 ${
+              isSelected
+                ? 'bg-primary/12 text-primary font-bold shadow-2xs'
+                : 'text-muted-foreground/75 font-medium hover:text-foreground hover:bg-muted/40'
+            }`}
+          >
+            {isSelected && <span className="absolute -top-[1px] h-[3px] w-6 rounded-full bg-primary" />}
+            <Icon
+              size={isSelected ? 18 : 17}
+              strokeWidth={isSelected ? 2.5 : 1.8}
+              className={isSelected ? 'text-primary' : 'text-muted-foreground/80'}
+            />
+            <span className={isSelected ? 'font-bold tracking-tight' : 'font-medium'}>
+              {label === 'Overview' ? 'Home' : label}
+            </span>
+          </Link>
+        );
+      })}
     </nav>
   </div>;
 }
