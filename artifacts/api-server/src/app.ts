@@ -6,10 +6,29 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
-const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173,http://127.0.0.1:5173")
+const defaultAllowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://attendance-companion-attendance-com.vercel.app",
+];
+
+const envOrigins = (process.env.CORS_ORIGIN ?? "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, ""))
   .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
+
+function isOriginAllowed(origin: string): boolean {
+  const normalized = origin.trim().replace(/\/$/, "");
+  if (allowedOrigins.includes(normalized)) {
+    return true;
+  }
+  if (/^https:\/\/attendance-companion-[a-z0-9-]+\.vercel\.app$/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
 
 // API clients need a response body on every session bootstrap request.
 // Avoid conditional 304 responses being interpreted as an empty auth payload
@@ -38,11 +57,11 @@ app.use(
 app.use(cors({
   credentials: true,
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || isOriginAllowed(origin)) {
       callback(null, true);
       return;
     }
-    callback(new Error("Origin is not allowed by CORS."));
+    callback(null, false);
   },
 }));
 app.use(cookieParser());
