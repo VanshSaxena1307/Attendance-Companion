@@ -42,6 +42,8 @@ export type StudentScheduledLecture = {
   lectureType: string;
   classState: ClassState;
   attendanceStatus: StudentLectureAttendanceStatus;
+  status?: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+  notes?: string | null;
 };
 
 export type StudentScheduleResponse = {

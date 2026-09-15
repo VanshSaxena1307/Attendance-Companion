@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { getGetCurrentUserQueryKey, logout, type CurrentUser } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { CreatorCredit } from './creator-credit';
 
 const nav = [
   { href: '/', label: 'Overview', icon: Gauge, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
   { href: '/attendance', label: 'Attendance', icon: BookOpen, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
   { href: '/requests', label: 'Exemptions', icon: ClipboardCheck, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
-  { href: '/issues', label: 'Issues', icon: FileWarning, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
-  { href: '/insights', label: 'Insights', icon: Lightbulb, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
+  { href: '/issues', label: 'Issues', icon: FileWarning, roles: ['STUDENT','MENTOR','ADMIN'] },
+  { href: '/insights', label: 'Insights', icon: Lightbulb, roles: ['STUDENT','MENTOR','ADMIN'] },
   { href: '/notifications', label: 'Inbox', icon: Bell, roles: ['STUDENT','MENTOR','HOD','ADMIN'] },
   { href: '/people', label: 'Students', icon: Users, roles: ['MENTOR','HOD','ADMIN'] },
 ];
@@ -39,7 +40,7 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
         <div className="border-t border-sidebar-border pt-4">
           <div className="flex items-center gap-3 px-2">
             <span data-testid="avatar-current-user" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#d9e4d0] text-[12px] font-bold text-sidebar">{user.initials}</span>
-            <div className="min-w-0 flex-1"><p data-testid="text-current-user" className="truncate text-[13px] font-semibold">{user.name}</p><p className="truncate text-[11px] text-sidebar-foreground/50">{user.role.toLowerCase()} · {user.department || 'Campus'}</p></div>
+            <div className="min-w-0 flex-1"><p data-testid="text-current-user" className="truncate text-[13px] font-semibold">{user.name}</p><p className="truncate text-[11px] text-sidebar-foreground/50">{user.role === 'HOD' ? 'Head of Department' : user.role.toLowerCase()} · {user.department || 'Campus'}</p></div>
             <button onClick={signOut} data-testid="button-sign-out" aria-label="Sign out" className="rounded-lg p-2 text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-foreground"><LogOut size={15}/></button>
           </div>
         </div>
@@ -49,13 +50,16 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
     <main className="min-h-[100dvh] lg:pl-[248px] max-w-full overflow-x-hidden">
       <header className="sticky top-0 z-20 flex h-14 sm:h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-3.5 sm:px-8 backdrop-blur-xl">
         <button onClick={() => setOpen(true)} aria-label="Open menu" data-testid="button-open-menu" className="rounded-xl p-2 text-foreground/70 hover:bg-muted lg:hidden"><Menu size={20}/></button>
-        <div className="hidden text-[11px] font-medium uppercase tracking-[.18em] text-muted-foreground sm:block">{user.role === 'STUDENT' ? 'Personal attendance workspace' : 'Student attention workspace'}</div>
+        <div className="hidden text-[11px] font-medium uppercase tracking-[.18em] text-muted-foreground sm:block">{user.role === 'STUDENT' ? 'Personal attendance workspace' : user.role === 'HOD' ? 'Department oversight workspace' : 'Student attention workspace'}</div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <Link href="/notifications" data-testid="link-header-notifications" className="relative rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Bell size={18} className="sm:w-[19px] sm:h-[19px]"/><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive"/></Link>
           <Link href="/profile/me" data-testid="link-header-profile" className="grid h-8 w-8 sm:h-9 sm:w-9 place-items-center rounded-full bg-secondary text-[10px] sm:text-[11px] font-bold text-foreground ring-2 ring-background hover:ring-accent">{user.initials}</Link>
         </div>
       </header>
-      <div className="px-3.5 sm:px-8 lg:px-10 pt-4 sm:pt-7 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] sm:pb-24 lg:pb-10">{children}</div>
+      <div className="px-3.5 sm:px-8 lg:px-10 pt-4 sm:pt-7 pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] sm:pb-24 lg:pb-10">
+        {children}
+        <CreatorCredit />
+      </div>
     </main>
     <nav className="fixed bottom-0 left-0 right-0 z-30 flex h-[62px] sm:h-[70px] items-center justify-around border-t border-border bg-card/95 px-1 sm:px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
       {visible.slice(0, 5).map(({ href, label, icon: Icon }) => {

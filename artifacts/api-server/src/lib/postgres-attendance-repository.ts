@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { attendanceTable, db, lectureInstancesTable, sectionsTable, settingsTable, studentsTable, subjectsTable, teacherSubjectSectionsTable, teachersTable, timetableEntriesTable, usersTable, type LectureInstance } from "@workspace/db";
 import { getLectureState, getLocalDateString } from "./postgres-timetable-repository";
 
@@ -339,10 +339,54 @@ export async function submitTeacherAttendance(
     attendance: Array<{ studentId: string; status: "PRESENT" | "ABSENT" }>;
   }
 ) {
-  const assignment = await teacherAssignment(teacherId, input.subjectId, input.sectionId);
-  if (!assignment) return undefined;
-
   let targetInstanceId = input.lectureInstanceId;
+
+  // Immediate rejection if target lecture instance is cancelled
+  if (targetInstanceId) {
+    const [instPreview] = await db
+      .select({ status: lectureInstancesTable.status })
+      .from(lectureInstancesTable)
+      .where(eq(lectureInstancesTable.id, targetInstanceId));
+    if (instPreview?.status === "CANCELLED") {
+      throw new TeacherInputError("Attendance cannot be marked for a cancelled lecture.");
+    }
+  }
+
+  const assignment = await teacherAssignment(teacherId, input.subjectId, input.sectionId);
+  if (!assignment) {
+    // Check if teacher is authorized via timetable entry or lecture instance
+    let isAuthorized = false;
+    if (targetInstanceId) {
+      const [inst] = await db
+        .select({ id: lectureInstancesTable.id })
+        .from(lectureInstancesTable)
+        .where(
+          and(
+            eq(lectureInstancesTable.id, targetInstanceId),
+            or(
+              eq(lectureInstancesTable.teacherId, teacherId),
+              eq(lectureInstancesTable.actualTeacherId, teacherId)
+            )
+          )
+        );
+      if (inst) isAuthorized = true;
+    }
+    if (!isAuthorized && input.timetableEntryId) {
+      const [entry] = await db
+        .select({ id: timetableEntriesTable.id })
+        .from(timetableEntriesTable)
+        .where(
+          and(
+            eq(timetableEntriesTable.id, input.timetableEntryId),
+            eq(timetableEntriesTable.teacherId, teacherId)
+          )
+        );
+      if (entry) isAuthorized = true;
+    }
+    if (!isAuthorized) {
+      return undefined;
+    }
+  }
 
   if (!targetInstanceId && input.timetableEntryId) {
     const [entry] = await db
@@ -363,6 +407,9 @@ export async function submitTeacherAttendance(
     if (!lectureInstance) {
       return undefined;
     }
+    if (lectureInstance.status === "CANCELLED") {
+      throw new TeacherInputError("Attendance cannot be marked for a cancelled lecture.");
+    }
     targetInstanceId = lectureInstance.id;
   }
 
@@ -375,11 +422,20 @@ export async function submitTeacherAttendance(
         .where(eq(lectureInstancesTable.id, targetInstanceId))
         .for("update");
 
-      if (!inst || (inst.teacherId !== teacherId && inst.actualTeacherId !== teacherId) || inst.sectionId !== input.sectionId || inst.subjectId !== input.subjectId) {
+      if (!inst) {
         return undefined;
       }
 
-      // 2. Lock check: If attendance already marked, reject immediately
+      // 2. Status & Lock check: If cancelled or attendance already marked, reject immediately
+      if (inst.status === "CANCELLED") {
+        throw new TeacherInputError("Attendance cannot be marked for a cancelled lecture.");
+      }
+
+      const teacherMatches = inst.teacherId === teacherId || inst.actualTeacherId === teacherId || Boolean(assignment);
+      if (!teacherMatches || inst.sectionId !== input.sectionId || inst.subjectId !== input.subjectId) {
+        return undefined;
+      }
+
       if (inst.attendanceStatus === "MARKED") {
         throw new TeacherInputError("Attendance for this lecture has already been submitted and is locked.");
       }
@@ -531,6 +587,43 @@ export type UserSettings = {
   notificationsEnabled: boolean;
 };
 
+const SYSTEM_USER_PROFILES: Record<string, { name: string; email: string | null; role: string; initials: string; department: string | null }> = {
+  "hod-rajesh": { name: "Rajesh Mehta", email: "rajesh.mehta@attendance.edu", role: "HOD", initials: "RM", department: "Computer Science & Engineering" },
+  "admin-office": { name: "Academic Office", email: "admin@attendance.edu", role: "ADMIN", initials: "AO", department: "Computer Science & Engineering" },
+  "mentor-priya": { name: "Varun Chaubey", email: "priya.nair@attendance.edu", role: "MENTOR", initials: "VC", department: "Computer Science & Engineering" },
+  "student-vansh": { name: "Vansh Saxena", email: "vansh@attendance.edu", role: "STUDENT", initials: "VS", department: "Computer Science & Engineering" },
+  "student-aman": { name: "Varun K. Kumar", email: "aman@attendance.edu", role: "STUDENT", initials: "AS", department: "Computer Science & Engineering" },
+};
+
+export async function ensureUserRecord(userId: string): Promise<void> {
+  const [existing] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+
+  if (!existing) {
+    const profile = SYSTEM_USER_PROFILES[userId] || {
+      name: userId,
+      email: null,
+      role: userId.startsWith("hod-") ? "HOD" : userId.startsWith("admin-") ? "ADMIN" : userId.startsWith("mentor-") ? "MENTOR" : "STUDENT",
+      initials: userId.slice(0, 2).toUpperCase(),
+      department: "Computer Science & Engineering",
+    };
+
+    await db
+      .insert(usersTable)
+      .values({
+        id: userId,
+        name: profile.name,
+        email: profile.email,
+        role: profile.role,
+        initials: profile.initials,
+        department: profile.department,
+      })
+      .onConflictDoNothing();
+  }
+}
+
 export async function getUserSettings(userId: string): Promise<UserSettings> {
   const [row] = await db
     .select()
@@ -549,6 +642,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
 }
 
 export async function updateUserSettings(userId: string, update: Partial<UserSettings>): Promise<UserSettings> {
+  await ensureUserRecord(userId);
   const current = await getUserSettings(userId);
   const next: UserSettings = {
     theme: update.theme ?? current.theme,

@@ -222,12 +222,13 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
     setMarks({});
   };
 
+  const isLectureCancelled = Boolean(selectedLecture && selectedLecture.status === 'CANCELLED');
   const isLectureLocked = selectedLecture ? selectedLecture.classState === 'UPCOMING' : false;
   const isAttendanceSubmitted = Boolean(
     (selectedLecture && selectedLecture.attendanceStatus === 'ATTENDANCE_MARKED') ||
     (existing.data && existing.data.length > 0)
   );
-  const isAttendanceBlocked = isLectureLocked || isAttendanceSubmitted || roster.isLoading || existing.isLoading || roster.isError || existing.isError;
+  const isAttendanceBlocked = isLectureCancelled || isLectureLocked || isAttendanceSubmitted || roster.isLoading || existing.isLoading || roster.isError || existing.isError;
 
   const students = safeArray(roster.data);
   const present = roster.data && !roster.isError && existing.data && !existing.isError
@@ -417,8 +418,24 @@ export function TeacherAttendance({ user }: { user: CurrentUser }) {
               </div>
             </div>
 
+            {/* Unexpected Holiday / Cancelled Banner */}
+            {isLectureCancelled && (
+              <div
+                data-testid="banner-lecture-cancelled"
+                className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/15 p-4 text-amber-950 dark:text-amber-100"
+              >
+                <AlertCircle size={18} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold uppercase tracking-wide">Lecture Cancelled (Unexpected Holiday)</p>
+                  <p className="opacity-90">
+                    {selectedLecture.notes || 'This lecture has been cancelled by an administrative order. Attendance marking is disabled.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Start Time Restriction Banner */}
-            {isLectureLocked && (
+            {isLectureLocked && !isLectureCancelled && (
               <div
                 data-testid="banner-lecture-not-started"
                 className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-300"

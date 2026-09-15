@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Layers,
   CalendarDays,
+  CalendarOff,
 } from 'lucide-react';
 import {
   useStudentSchedule,
@@ -207,7 +208,14 @@ function LectureCard({
             </span>
           </div>
           <div>
-            <ClassStateBadge state={lecture.classState} isPreview={isPreview} />
+            {lecture.status === 'CANCELLED' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                <CalendarOff size={11} />
+                Cancelled
+              </span>
+            ) : (
+              <ClassStateBadge state={lecture.classState} isPreview={isPreview} />
+            )}
           </div>
         </div>
 
@@ -271,7 +279,24 @@ function LectureCard({
           <span className="text-xs text-muted-foreground font-medium md:hidden">
             Attendance
           </span>
-          <AttendanceBadge status={lecture.attendanceStatus} />
+          {lecture.status === 'CANCELLED' ? (
+            <div className="flex flex-col items-end gap-0.5">
+              <span
+                data-testid="badge-attendance-cancelled"
+                className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-3 py-1 text-[11px] font-bold text-amber-900 dark:text-amber-200 shadow-xs"
+              >
+                <CalendarOff size={13} strokeWidth={2.4} />
+                Cancelled
+              </span>
+              {lecture.notes && (
+                <span className="text-[10px] text-muted-foreground max-w-[200px] truncate" title={lecture.notes}>
+                  {lecture.notes.replace(/^Unexpected Holiday:\s*/i, '')}
+                </span>
+              )}
+            </div>
+          ) : (
+            <AttendanceBadge status={lecture.attendanceStatus} />
+          )}
         </div>
       </div>
     </article>

@@ -6,6 +6,9 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import Login from '@/pages/login';
 import { Attendance, Dashboard, Insights, Issues, Notifications, People, Profile, Requests, SettingsPage, TeacherAttendance } from '@/pages/main-pages';
+import { HodDashboard } from '@/pages/hod-dashboard';
+import { HodAttendance } from '@/pages/hod-attendance';
+import { HodSectionPage } from '@/pages/hod-section';
 import { setBaseUrl, useGetCurrentUser } from '@workspace/api-client-react';
 import {
   Route,
@@ -36,8 +39,9 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/login" component={Login} />
-        <Route path="/"><Authenticated>{(user) => user.role === 'MENTOR' ? <TeacherAttendance user={user}/> : <Dashboard user={user}/>}</Authenticated></Route>
-        <Route path="/attendance"><Authenticated>{(user) => user.role === 'MENTOR' ? <TeacherAttendance user={user}/> : <Attendance user={user}/>}</Authenticated></Route>
+        <Route path="/"><Authenticated>{(user) => user.role === 'MENTOR' ? <TeacherAttendance user={user}/> : user.role === 'HOD' ? <HodDashboard user={user}/> : <Dashboard user={user}/>}</Authenticated></Route>
+        <Route path="/attendance"><Authenticated>{(user) => user.role === 'MENTOR' ? <TeacherAttendance user={user}/> : user.role === 'HOD' ? <HodAttendance user={user}/> : <Attendance user={user}/>}</Authenticated></Route>
+        <Route path="/sections/:sectionId"><Authenticated>{(user) => <HodSectionPage user={user}/>}</Authenticated></Route>
         <Route path="/requests"><Authenticated>{(user) => <Requests user={user}/>}</Authenticated></Route>
         <Route path="/issues"><Authenticated>{(user) => <Issues user={user}/>}</Authenticated></Route>
         <Route path="/insights"><Authenticated>{(user) => <Insights user={user}/>}</Authenticated></Route>

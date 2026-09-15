@@ -38,6 +38,8 @@ export type MentorScheduledLecture = {
   classState: ClassState;
   enrolledStudentsCount: number;
   markedStudentsCount: number;
+  status?: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+  notes?: string | null;
 };
 
 export type MentorScheduleResponse = {

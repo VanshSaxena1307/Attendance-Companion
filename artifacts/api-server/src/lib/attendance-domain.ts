@@ -455,6 +455,18 @@ export async function getMentorTodaysSchedule(mentorId: string, date?: string) {
   return postgresTimetable.getMentorSchedule(mentorId, date);
 }
 
+export async function getDepartmentSchedule(date?: string, section?: string) {
+  return postgresTimetable.getDepartmentSchedule(date, section);
+}
+
+export async function cancelLecturesForHoliday(input: postgresTimetable.CancelHolidayInput) {
+  return postgresTimetable.cancelLecturesForHoliday(input);
+}
+
+export async function resetUnexpectedHoliday(date: string, section?: string) {
+  return postgresTimetable.resetUnexpectedHoliday(date, section);
+}
+
 export {
   getLocalDateString,
   getDayOfWeekFromDate,
@@ -466,5 +478,9 @@ export {
   type ClassState,
   type StudentScheduledLecture,
   type MentorScheduledLecture,
+  type DepartmentScheduledLecture,
+  type DepartmentScheduleSummary,
+  type CancelHolidayInput,
+  type CancelHolidayResult,
 } from "./postgres-timetable-repository";
 

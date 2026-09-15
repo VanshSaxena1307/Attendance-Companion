@@ -66,6 +66,8 @@ export type StudentScheduledLecture = {
   lectureType: string;
   attendanceStatus: StudentLectureAttendanceStatus;
   classState: ClassState;
+  status?: "SCHEDULED" | "COMPLETED" | "CANCELLED";
+  notes?: string | null;
 };
 
 export type MentorScheduledLecture = {
@@ -90,6 +92,8 @@ export type MentorScheduledLecture = {
   classState: ClassState;
   enrolledStudentsCount: number;
   markedStudentsCount: number;
+  status?: "SCHEDULED" | "COMPLETED" | "CANCELLED";
+  notes?: string | null;
 };
 
 export function getLocalDateString(date = new Date()): string {
@@ -331,6 +335,8 @@ export async function getStudentSchedule(
       lectureType: entry.lectureType,
       attendanceStatus,
       classState,
+      status: (instance?.status as "SCHEDULED" | "COMPLETED" | "CANCELLED") || "SCHEDULED",
+      notes: instance?.notes || null,
     };
   });
 
@@ -512,6 +518,8 @@ export async function getMentorSchedule(
       classState,
       enrolledStudentsCount: enrolledCount,
       markedStudentsCount: markedCount,
+      status: (instance?.status as "SCHEDULED" | "COMPLETED" | "CANCELLED") || "SCHEDULED",
+      notes: instance?.notes || null,
     });
   }
 
@@ -520,5 +528,408 @@ export async function getMentorSchedule(
     day: dayOfWeek,
     mentor,
     lectures,
+  };
+}
+
+export type DepartmentScheduledLecture = {
+  id: string;
+  timetableEntryId: string;
+  lectureInstanceId: string | null;
+  section: string;
+  sectionId: string;
+  day: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  time: string;
+  subjectId: string | null;
+  subjectCode: string | null;
+  subjectName: string | null;
+  teacherId: string | null;
+  teacherName: string | null;
+  teacherInitials: string | null;
+  room: string;
+  batchType: string;
+  batch: string;
+  lectureType: string;
+  status: "SCHEDULED" | "COMPLETED" | "CANCELLED";
+  attendanceStatus: "MARKED" | "PENDING";
+  markedAt: string | null;
+  notes: string | null;
+};
+
+export type DepartmentScheduleSummary = {
+  date: string;
+  day: string;
+  totalScheduled: number;
+  markedCount: number;
+  pendingCount: number;
+  cancelledCount: number;
+  unexpectedHoliday: {
+    active: boolean;
+    date: string;
+    reason: string | null;
+    affectedSections: string[];
+    cancelledLecturesCount: number;
+  } | null;
+  lectures: DepartmentScheduledLecture[];
+};
+
+export async function getDepartmentSchedule(
+  targetDate?: string,
+  sectionCodeFilter?: string
+): Promise<DepartmentScheduleSummary> {
+  const dateStr = targetDate || getLocalDateString();
+  const dayOfWeek = getDayOfWeekFromDate(dateStr);
+
+  const cleanFilter = sectionCodeFilter ? sectionCodeFilter.replace(/-/g, "").toUpperCase() : undefined;
+
+  const activeTimetables = await db
+    .select({
+      id: timetablesTable.id,
+      sectionId: timetablesTable.sectionId,
+      sectionCode: sectionsTable.code,
+    })
+    .from(timetablesTable)
+    .innerJoin(sectionsTable, eq(sectionsTable.id, timetablesTable.sectionId))
+    .where(eq(timetablesTable.status, "ACTIVE"));
+
+  const filteredTimetables = cleanFilter
+    ? activeTimetables.filter((t) => t.sectionCode.replace(/-/g, "").toUpperCase() === cleanFilter)
+    : activeTimetables;
+
+  const timetableIds = filteredTimetables.map((t) => t.id);
+
+  if (!timetableIds.length) {
+    return {
+      date: dateStr,
+      day: dayOfWeek,
+      totalScheduled: 0,
+      markedCount: 0,
+      pendingCount: 0,
+      cancelledCount: 0,
+      unexpectedHoliday: null,
+      lectures: [],
+    };
+  }
+
+  const entries = await db
+    .select({
+      entry: timetableEntriesTable,
+      sectionCode: sectionsTable.code,
+    })
+    .from(timetableEntriesTable)
+    .innerJoin(sectionsTable, eq(sectionsTable.id, timetableEntriesTable.sectionId))
+    .where(
+      and(
+        inArray(timetableEntriesTable.timetableId, timetableIds),
+        eq(timetableEntriesTable.dayOfWeek, dayOfWeek)
+      )
+    )
+    .orderBy(asc(timetableEntriesTable.startTime), asc(sectionsTable.code));
+
+  const instances = await db
+    .select()
+    .from(lectureInstancesTable)
+    .where(eq(lectureInstancesTable.date, dateStr));
+
+  const instanceByEntryId = new Map<string, typeof lectureInstancesTable.$inferSelect>();
+  for (const inst of instances) {
+    if (inst.timetableEntryId) {
+      instanceByEntryId.set(inst.timetableEntryId, inst);
+    }
+  }
+
+  const lectures: DepartmentScheduledLecture[] = [];
+  let markedCount = 0;
+  let cancelledCount = 0;
+  let pendingCount = 0;
+  const holidayReasons: string[] = [];
+  const affectedSectionsSet = new Set<string>();
+
+  for (const { entry, sectionCode } of entries) {
+    const inst = instanceByEntryId.get(entry.id);
+    const instStatus = (inst?.status as "SCHEDULED" | "COMPLETED" | "CANCELLED") || "SCHEDULED";
+    const isCancelled = instStatus === "CANCELLED";
+
+    let attendanceStatus: "MARKED" | "PENDING" = "PENDING";
+    let markedAtTime: string | null = null;
+
+    if (inst) {
+      if (inst.attendanceStatus === "MARKED" || inst.status === "COMPLETED") {
+        attendanceStatus = "MARKED";
+        if (inst.markedAt) {
+          markedAtTime = new Intl.DateTimeFormat("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }).format(new Date(inst.markedAt));
+        }
+      }
+    }
+
+    const displaySection = sectionCode.startsWith("CSE") && !sectionCode.includes("-")
+      ? `CSE-${sectionCode.slice(3)}`
+      : sectionCode;
+
+    if (isCancelled) {
+      cancelledCount++;
+      if (inst?.notes) holidayReasons.push(inst.notes);
+      affectedSectionsSet.add(displaySection);
+    } else if (attendanceStatus === "MARKED") {
+      markedCount++;
+    } else {
+      pendingCount++;
+    }
+
+    lectures.push({
+      id: inst?.id || entry.id,
+      timetableEntryId: entry.id,
+      lectureInstanceId: inst?.id || null,
+      section: displaySection,
+      sectionId: entry.sectionId,
+      day: entry.dayOfWeek,
+      date: dateStr,
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      time: `${entry.startTime} – ${entry.endTime}`,
+      subjectId: entry.subjectId,
+      subjectCode: entry.subjectCode,
+      subjectName: entry.subjectName,
+      teacherId: entry.teacherId,
+      teacherName: entry.teacherName,
+      teacherInitials: entry.teacherInitials,
+      room: entry.room,
+      batchType: entry.batchType,
+      batch: entry.batch,
+      lectureType: entry.lectureType,
+      status: instStatus,
+      attendanceStatus,
+      markedAt: markedAtTime,
+      notes: inst?.notes || null,
+    });
+  }
+
+  const unexpectedHoliday = cancelledCount > 0 ? {
+    active: true,
+    date: dateStr,
+    reason: holidayReasons[0]?.replace(/^Unexpected Holiday:\s*/i, "") || "Campus closed by Administrative Order",
+    affectedSections: Array.from(affectedSectionsSet),
+    cancelledLecturesCount: cancelledCount,
+  } : null;
+
+  return {
+    date: dateStr,
+    day: dayOfWeek,
+    totalScheduled: entries.length,
+    markedCount,
+    pendingCount,
+    cancelledCount,
+    unexpectedHoliday,
+    lectures,
+  };
+}
+
+export type CancelHolidayInput = {
+  date: string;
+  section?: string;
+  numberOfLectures?: number;
+  reason: string;
+};
+
+export type CancelHolidayResult = {
+  success: boolean;
+  date: string;
+  targetSection: string;
+  reason: string;
+  cancelledCount: number;
+  skippedCount: number;
+  cancelledInstanceIds: string[];
+  skippedReasons: string[];
+};
+
+export async function cancelLecturesForHoliday(
+  input: CancelHolidayInput
+): Promise<CancelHolidayResult> {
+  const { date, reason } = input;
+  const sectionFilter = input.section && input.section !== "ALL"
+    ? input.section.replace(/-/g, "").toUpperCase()
+    : undefined;
+
+  const dayOfWeek = getDayOfWeekFromDate(date);
+
+  const activeTimetables = await db
+    .select({
+      id: timetablesTable.id,
+      sectionId: timetablesTable.sectionId,
+      sectionCode: sectionsTable.code,
+    })
+    .from(timetablesTable)
+    .innerJoin(sectionsTable, eq(sectionsTable.id, timetablesTable.sectionId))
+    .where(eq(timetablesTable.status, "ACTIVE"));
+
+  const filteredTimetables = sectionFilter
+    ? activeTimetables.filter((t) => t.sectionCode.replace(/-/g, "").toUpperCase() === sectionFilter)
+    : activeTimetables;
+
+  const timetableIds = filteredTimetables.map((t) => t.id);
+  if (!timetableIds.length) {
+    return {
+      success: true,
+      date,
+      targetSection: input.section || "ALL",
+      reason,
+      cancelledCount: 0,
+      skippedCount: 0,
+      cancelledInstanceIds: [],
+      skippedReasons: ["No active timetables found for specified section(s)"],
+    };
+  }
+
+  const entries = await db
+    .select({
+      entry: timetableEntriesTable,
+      sectionCode: sectionsTable.code,
+    })
+    .from(timetableEntriesTable)
+    .innerJoin(sectionsTable, eq(sectionsTable.id, timetableEntriesTable.sectionId))
+    .where(
+      and(
+        inArray(timetableEntriesTable.timetableId, timetableIds),
+        eq(timetableEntriesTable.dayOfWeek, dayOfWeek)
+      )
+    )
+    .orderBy(asc(timetableEntriesTable.startTime), asc(sectionsTable.code));
+
+  const cancelledInstanceIds: string[] = [];
+  const skippedReasons: string[] = [];
+  let cancelledCount = 0;
+  let skippedCount = 0;
+  const limit = input.numberOfLectures && input.numberOfLectures > 0 ? input.numberOfLectures : Infinity;
+
+  for (const { entry } of entries) {
+    if (cancelledCount >= limit) break;
+
+    let [inst] = await db
+      .select()
+      .from(lectureInstancesTable)
+      .where(
+        and(
+          eq(lectureInstancesTable.timetableEntryId, entry.id),
+          eq(lectureInstancesTable.date, date)
+        )
+      );
+
+    if (!inst) {
+      const instanceId = `inst_${entry.id}_${date.replace(/-/g, "")}`;
+      const [created] = await db
+        .insert(lectureInstancesTable)
+        .values({
+          id: instanceId,
+          timetableEntryId: entry.id,
+          sectionId: entry.sectionId,
+          subjectId: entry.subjectId!,
+          teacherId: entry.teacherId ?? null,
+          teacherName: entry.teacherName ?? null,
+          teacherInitials: entry.teacherInitials ?? null,
+          date,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          room: entry.room,
+          batchType: entry.batchType,
+          batch: entry.batch,
+          lectureType: entry.lectureType,
+          status: "SCHEDULED",
+          attendanceStatus: "UNMARKED",
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      inst = created || (await db
+        .select()
+        .from(lectureInstancesTable)
+        .where(
+          and(
+            eq(lectureInstancesTable.timetableEntryId, entry.id),
+            eq(lectureInstancesTable.date, date)
+          )
+        )
+        .then((rows) => rows[0]));
+    }
+
+    if (!inst) continue;
+
+    if (inst.attendanceStatus === "MARKED" || inst.status === "COMPLETED") {
+      skippedCount++;
+      skippedReasons.push(`Lecture ${entry.subjectCode || entry.id} at ${entry.startTime} has already been marked/completed.`);
+      continue;
+    }
+
+    if (inst.status === "CANCELLED") {
+      cancelledInstanceIds.push(inst.id);
+      continue;
+    }
+
+    const holidayNote = `Unexpected Holiday: ${reason}`;
+    await db
+      .update(lectureInstancesTable)
+      .set({
+        status: "CANCELLED",
+        notes: holidayNote,
+      })
+      .where(eq(lectureInstancesTable.id, inst.id));
+
+    cancelledInstanceIds.push(inst.id);
+    cancelledCount++;
+  }
+
+  return {
+    success: true,
+    date,
+    targetSection: input.section || "ALL",
+    reason,
+    cancelledCount,
+    skippedCount,
+    cancelledInstanceIds,
+    skippedReasons,
+  };
+}
+
+export async function resetUnexpectedHoliday(
+  date: string,
+  section?: string
+): Promise<{ success: boolean; resetCount: number }> {
+  const sectionFilter = section && section !== "ALL"
+    ? section.replace(/-/g, "").toUpperCase()
+    : undefined;
+
+  let whereCond = and(
+    eq(lectureInstancesTable.date, date),
+    eq(lectureInstancesTable.status, "CANCELLED")
+  );
+
+  if (sectionFilter) {
+    const [sec] = await db
+      .select({ id: sectionsTable.id })
+      .from(sectionsTable)
+      .where(eq(sectionsTable.code, sectionFilter));
+
+    if (sec) {
+      whereCond = and(whereCond, eq(lectureInstancesTable.sectionId, sec.id))!;
+    }
+  }
+
+  const updated = await db
+    .update(lectureInstancesTable)
+    .set({
+      status: "SCHEDULED",
+      notes: null,
+    })
+    .where(whereCond)
+    .returning({ id: lectureInstancesTable.id });
+
+  return {
+    success: true,
+    resetCount: updated.length,
   };
 }

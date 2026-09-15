@@ -40,6 +40,16 @@ async function main() {
     if (report.attendance % 1_000 === 0) console.info(`Attendance records queued: ${report.attendance}`);
   };
 
+  // Ensure HOD, Admin, and core identity rows exist in usersTable idempotently
+  const systemUsers = [
+    { id: "hod-rajesh", name: "Rajesh Mehta", email: "rajesh.mehta@attendance.edu", role: "HOD", initials: "RM", department: "Computer Science & Engineering" },
+    { id: "admin-office", name: "Academic Office", email: "admin@attendance.edu", role: "ADMIN", initials: "AO", department: "Computer Science & Engineering" },
+    { id: "mentor-priya", name: "Varun Chaubey", email: "priya.nair@attendance.edu", role: "MENTOR", initials: "VC", department: "Computer Science & Engineering" },
+  ];
+  for (const u of systemUsers) {
+    await db.insert(usersTable).values(u).onConflictDoNothing();
+  }
+
   for (const code of sections) await db.insert(sectionsTable).values({ id: id("section", code), code, department: "Computer Science & Engineering", semester: "III" }).onConflictDoNothing();
   for (const student of sourceStudents) {
     const userId = student.admissionNo === "2025B01010066" ? "student-vansh" : id("student", student.admissionNo);

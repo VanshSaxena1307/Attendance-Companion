@@ -16,6 +16,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   Users,
+  CalendarOff,
 } from 'lucide-react';
 import {
   useMentorSchedule,
@@ -53,11 +54,34 @@ function AttendanceStatusBadge({
   status,
   markedCount,
   totalCount,
+  isCancelled,
+  notes,
 }: {
   status: MentorLectureAttendanceStatus;
   markedCount: number;
   totalCount: number;
+  isCancelled?: boolean;
+  notes?: string | null;
 }) {
+  if (isCancelled) {
+    return (
+      <div className="flex flex-col items-start sm:items-end gap-0.5">
+        <span
+          data-testid="badge-attendance-cancelled"
+          className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-3 py-1 text-[11px] font-bold text-amber-900 dark:text-amber-200 shadow-xs"
+        >
+          <CalendarOff size={13} strokeWidth={2.4} />
+          Cancelled
+        </span>
+        {notes && (
+          <span className="text-[10px] text-muted-foreground max-w-[200px] truncate" title={notes}>
+            {notes.replace(/^Unexpected Holiday:\s*/i, '')}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   switch (status) {
     case 'ATTENDANCE_MARKED':
       return (
@@ -245,10 +269,23 @@ export function MentorLectureCard({
             status={lecture.attendanceStatus}
             markedCount={lecture.markedStudentsCount}
             totalCount={lecture.enrolledStudentsCount}
+            isCancelled={lecture.status === 'CANCELLED'}
+            notes={lecture.notes}
           />
 
           <div className="w-full sm:w-auto">
-            {lecture.attendanceStatus === 'ATTENDANCE_NOT_APPLICABLE' ? (
+            {lecture.status === 'CANCELLED' ? (
+              <button
+                type="button"
+                disabled
+                data-testid={`button-lecture-cancelled-${lecture.timetableEntryId}`}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 cursor-not-allowed opacity-85"
+                title={lecture.notes || "Lecture cancelled due to unexpected holiday"}
+              >
+                <CalendarOff size={13} />
+                Lecture Cancelled
+              </button>
+            ) : lecture.attendanceStatus === 'ATTENDANCE_NOT_APPLICABLE' ? (
               <span className="text-xs text-muted-foreground italic">No attendance required</span>
             ) : isLocked ? (
               <button
