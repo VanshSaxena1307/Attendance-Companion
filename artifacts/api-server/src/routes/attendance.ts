@@ -91,30 +91,45 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get("/dashboard/summary", async (req, res): Promise<void> => {
+const studentOnly = (res: Response): CurrentUser | undefined => {
   const user = res.locals.user as CurrentUser;
-  const data = GetDashboardSummaryResponse.parse(await getDashboard(user.role === "STUDENT" ? user.id : "student-vansh", getSettings(user.id).targetAttendance));
+  if (user.role !== "STUDENT") {
+    res.status(403).json({ error: "This action requires a student role." });
+    return undefined;
+  }
+  return user;
+};
+
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
+  const user = studentOnly(res);
+  if (!user) return;
+  const target = (await getSettingsAsync(user.id)).targetAttendance;
+  const data = GetDashboardSummaryResponse.parse(await getDashboard(user.id, target));
   res.json(data);
 });
 
 router.get("/attendance/subjects", async (req, res): Promise<void> => {
-  const user = res.locals.user as CurrentUser;
-  res.json(GetSubjectAttendanceResponse.parse(await getSubjects(user.role === "STUDENT" ? user.id : "student-vansh", getSettings(user.id).targetAttendance)));
+  const user = studentOnly(res);
+  if (!user) return;
+  const target = (await getSettingsAsync(user.id)).targetAttendance;
+  res.json(GetSubjectAttendanceResponse.parse(await getSubjects(user.id, target)));
 });
 
 router.get("/attendance/history", async (req, res): Promise<void> => {
+  const user = studentOnly(res);
+  if (!user) return;
   const query = GetAttendanceHistoryQueryParams.safeParse(req.query);
   if (!query.success) { res.status(400).json({ error: query.error.message }); return; }
-  const user = res.locals.user as CurrentUser;
   const filters = { subject: query.data.subject, status: query.data.status, from: query.data.from?.toISOString().slice(0, 10), to: query.data.to?.toISOString().slice(0, 10) };
-  const all = await getHistory(user.role === "STUDENT" ? user.id : "student-vansh", filters);
+  const all = await getHistory(user.id, filters);
   const start = (query.data.page - 1) * query.data.pageSize;
   res.json(GetAttendanceHistoryResponse.parse({ items: all.slice(start, start + query.data.pageSize), page: query.data.page, pageSize: query.data.pageSize, total: all.length }));
 });
 
 router.get("/attendance/trend", async (req, res): Promise<void> => {
-  const user = res.locals.user as CurrentUser;
-  res.json(GetAttendanceTrendResponse.parse(await getTrend(user.role === "STUDENT" ? user.id : "student-vansh")));
+  const user = studentOnly(res);
+  if (!user) return;
+  res.json(GetAttendanceTrendResponse.parse(await getTrend(user.id)));
 });
 
 const mentorOnly = (res: Response): CurrentUser | undefined => {
@@ -183,9 +198,10 @@ router.get("/exemptions", (req, res): void => {
 });
 
 router.post("/exemptions", (req, res): void => {
+  const user = studentOnly(res);
+  if (!user) return;
   const parsed = CreateExemptionBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const user = res.locals.user as CurrentUser;
   const item = createExemption(user, { ...parsed.data, proofName: parsed.data.proofName ?? null, startDate: parsed.data.startDate.toISOString().slice(0, 10), endDate: parsed.data.endDate.toISOString().slice(0, 10) });
   res.status(201).json(CreateExemptionResponse.parse(item));
 });
@@ -218,9 +234,11 @@ router.get("/attendance-issues", (req, res): void => {
 });
 
 router.post("/attendance-issues", (req, res): void => {
+  const user = studentOnly(res);
+  if (!user) return;
   const parsed = CreateAttendanceIssueBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const item = createIssue(res.locals.user as CurrentUser, { ...parsed.data, evidenceName: parsed.data.evidenceName ?? null, date: parsed.data.date.toISOString().slice(0, 10) });
+  const item = createIssue(user, { ...parsed.data, evidenceName: parsed.data.evidenceName ?? null, date: parsed.data.date.toISOString().slice(0, 10) });
   res.status(201).json(CreateAttendanceIssueResponse.parse(item));
 });
 

@@ -64,10 +64,11 @@ export async function fetchStudentSchedule(date?: string): Promise<StudentSchedu
   return customFetch<StudentScheduleResponse>(url, { method: 'GET' });
 }
 
-export function useStudentSchedule(date?: string) {
+export function useStudentSchedule(date?: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: getStudentScheduleQueryKey(date),
     queryFn: () => fetchStudentSchedule(date),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }

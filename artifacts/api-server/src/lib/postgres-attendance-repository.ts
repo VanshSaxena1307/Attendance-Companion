@@ -5,14 +5,14 @@ import { getLectureState, getLocalDateString } from "./postgres-timetable-reposi
 
 export type AttendanceStatus = "PRESENT" | "ABSENT" | "EXEMPTED" | "LATE" | "NOT_MARKED";
 
-type StudentContext = { id: string; name: string; rollNo: string; sectionId: string; section: string };
+type StudentContext = { id: string; name: string; rollNo: string; sectionId: string; section: string; branch: string };
 
 const riskFor = (percentage: number, target: number) => percentage < target - 5 ? "CRITICAL" : percentage < target + 5 ? "WARNING" : "SAFE";
 const percentageFor = (present: number, total: number) => total ? Math.round((present / total) * 1000) / 10 : 0;
 const isPresent = (status: string) => status === "PRESENT" || status === "LATE" || status === "EXEMPTED";
 
 async function studentContext(studentId: string): Promise<StudentContext | undefined> {
-  const [student] = await db.select({ id: studentsTable.id, name: usersTable.name, rollNo: studentsTable.rollNo, sectionId: studentsTable.sectionId, section: sectionsTable.code })
+  const [student] = await db.select({ id: studentsTable.id, name: usersTable.name, rollNo: studentsTable.rollNo, sectionId: studentsTable.sectionId, section: sectionsTable.code, branch: sectionsTable.department })
     .from(studentsTable)
     .innerJoin(usersTable, eq(usersTable.id, studentsTable.id))
     .innerJoin(sectionsTable, eq(sectionsTable.id, studentsTable.sectionId))

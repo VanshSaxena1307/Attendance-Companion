@@ -21,7 +21,7 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
   const queryClient = useQueryClient();
   const visible = nav.filter((item) => item.roles.includes(user.role));
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
-  const signOut = async () => { await logout(); queryClient.removeQueries({ queryKey: getGetCurrentUserQueryKey() }); setLocation('/login'); };
+  const signOut = async () => { await logout(); queryClient.clear(); setLocation('/login'); };
   return <div className="noise min-h-[100dvh] bg-background">
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="mb-9 flex items-center justify-between px-2">

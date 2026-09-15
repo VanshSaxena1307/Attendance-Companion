@@ -252,7 +252,12 @@ export async function getStudentSchedule(
   const instanceRows = await db
     .select()
     .from(lectureInstancesTable)
-    .where(eq(lectureInstancesTable.date, dateStr));
+    .where(
+      and(
+        eq(lectureInstancesTable.sectionId, student.sectionId),
+        eq(lectureInstancesTable.date, dateStr)
+      )
+    );
   const instanceByTimetableEntry = new Map<string, typeof lectureInstancesTable.$inferSelect>();
   for (const inst of instanceRows) {
     if (inst.timetableEntryId) {

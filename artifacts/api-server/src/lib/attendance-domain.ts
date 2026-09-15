@@ -312,17 +312,21 @@ export async function getDashboard(studentId: string, target = 75) {
   const openIssues = issues.filter((item) => item.studentId === studentId && ["OPEN", "UNDER_REVIEW"].includes(item.status)).length;
   const canMiss = Math.max(0, Math.floor(present / (target / 100) - total));
   const classesToTarget = percentage >= target ? 0 : Math.ceil((target * total / 100 - present) / (1 - target / 100));
+  const studentNotifications = notifications.filter((item) => item.recipientId === studentId);
+  const recentActivity = studentNotifications.slice(0, 5).map((n) => ({
+    id: n.id,
+    title: n.title,
+    description: n.message,
+    time: formatRelativeTime(n.createdAt),
+    type: (n.type === "SUCCESS" || n.type === "WARNING" || n.type === "INFO" ? n.type : "INFO") as "INFO" | "WARNING" | "SUCCESS" | "ISSUE",
+  }));
   return {
     overall: { ...metrics.overall, label: labelFor(percentage, target) },
     totals: metrics.totals,
     subjects: metrics.subjects,
     pendingRequests,
     openIssues,
-    recentActivity: [
-      { id: "activity-1", title: "Exemption approved", description: "College event request was approved by your mentor.", time: "2 days ago", type: "SUCCESS" as const },
-      { id: "activity-2", title: "OOPS needs attention", description: "Your subject attendance moved into the warning range.", time: "4 days ago", type: "WARNING" as const },
-      { id: "activity-3", title: "Issue under review", description: "Your DSA attendance report is with Priya Nair.", time: "5 days ago", type: "INFO" as const },
-    ],
+    recentActivity,
     insight: {
       headline: percentage >= target ? `You can miss approximately ${canMiss} more ${canMiss === 1 ? "class" : "classes"}.` : `Attend the next ${classesToTarget} classes to reach ${target}%.`,
       detail: percentage >= target ? `Your attendance is above the ${target}% target. Keep a little buffer for unexpected absences.` : `Your current attendance is below the ${target}% target. Consistent attendance can bring it back up.`,
@@ -330,6 +334,19 @@ export async function getDashboard(studentId: string, target = 75) {
       canMiss,
     },
   };
+}
+
+function formatRelativeTime(dateStr: string): string {
+  try {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(new Date(dateStr));
+  } catch {
+    return "Recently";
+  }
 }
 
 function riskFor(percentage: number, target: number): Risk {
@@ -442,9 +459,22 @@ export async function getStudentSummaries(target = 75) {
 export async function getStudentProfile(id: string, target = 75) {
   const student = await postgresAttendance.getStudentContext(id);
   if (!student) return undefined;
-  const summaries = await getStudentSummaries(target);
-  const summary = summaries.find((item) => item.id === id);
-  return summary && { ...summary, subjects: await getSubjects(id, target), exemptions: exemptions.filter((item) => item.studentId === id), issues: issues.filter((item) => item.studentId === id), notifications: notifications.filter((item) => item.recipientId === id) };
+  const metrics = await postgresAttendance.getAttendanceMetrics(id, target);
+  return {
+    id: student.id,
+    name: student.name,
+    rollNo: student.rollNo,
+    section: student.section,
+    branch: student.branch,
+    percentage: metrics.overall.percentage,
+    status: metrics.overall.status,
+    subjects: metrics.subjects,
+    pendingRequests: exemptions.filter((item) => item.studentId === id && item.status === "PENDING").length,
+    openIssues: issues.filter((item) => item.studentId === id && ["OPEN", "UNDER_REVIEW"].includes(item.status)).length,
+    exemptions: exemptions.filter((item) => item.studentId === id),
+    issues: issues.filter((item) => item.studentId === id),
+    notifications: notifications.filter((item) => item.recipientId === id),
+  };
 }
 
 export async function getStudentTodaysSchedule(studentId: string, date?: string) {

@@ -18,7 +18,15 @@ import {
   Router as WouterRouter,
 } from 'wouter';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 const apiBaseUrl = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || null) : null;
 setBaseUrl(apiBaseUrl);
 function Authenticated({ children }: { children: (user: import('@workspace/api-client-react').CurrentUser) => ReactNode }) {
