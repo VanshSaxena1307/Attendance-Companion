@@ -96,11 +96,15 @@ export type MentorScheduledLecture = {
   notes?: string | null;
 };
 
-export function getLocalDateString(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+export const COLLEGE_TIMEZONE = "Asia/Kolkata";
+
+export function getLocalDateString(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: COLLEGE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 export function getDayOfWeekFromDate(dateStr: string): string {
@@ -110,12 +114,20 @@ export function getDayOfWeekFromDate(dateStr: string): string {
   return days[date.getUTCDay()];
 }
 
-export function getLectureState(startTime: string, endTime: string, queryDateStr: string, now = new Date()): ClassState {
+export function getLectureState(startTime: string, endTime: string, queryDateStr: string, now: Date = new Date()): ClassState {
   const todayStr = getLocalDateString(now);
   if (queryDateStr < todayStr) return "COMPLETED";
   if (queryDateStr > todayStr) return "UPCOMING";
 
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: COLLEGE_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const [hStr, mStr] = timeFormatter.format(now).split(":");
+  const currentMinutes = (parseInt(hStr, 10) % 24) * 60 + parseInt(mStr, 10);
+
   const [startH, startM] = startTime.split(":").map(Number);
   const [endH, endM] = endTime.split(":").map(Number);
   const startMinutes = startH * 60 + startM;
@@ -665,6 +677,7 @@ export async function getDepartmentSchedule(
         attendanceStatus = "MARKED";
         if (inst.markedAt) {
           markedAtTime = new Intl.DateTimeFormat("en-IN", {
+            timeZone: COLLEGE_TIMEZONE,
             hour: "numeric",
             minute: "2-digit",
             hour12: true,

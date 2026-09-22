@@ -343,7 +343,7 @@ function formatRelativeTime(dateStr: string): string {
     if (diffDays <= 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
-    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(new Date(dateStr));
+    return new Intl.DateTimeFormat("en-IN", { timeZone: postgresTimetable.COLLEGE_TIMEZONE, day: "numeric", month: "short" }).format(new Date(dateStr));
   } catch {
     return "Recently";
   }
@@ -498,6 +498,7 @@ export async function resetUnexpectedHoliday(date: string, section?: string) {
 }
 
 export {
+  COLLEGE_TIMEZONE,
   getLocalDateString,
   getDayOfWeekFromDate,
   getLectureState,

@@ -17,6 +17,7 @@ import {
   lectureInstancesTable,
   eq,
   and,
+  sql,
 } from "../../lib/db/src/index";
 
 async function runPhase4Tests() {
@@ -635,6 +636,10 @@ async function runPhase4Tests() {
       assert.strictEqual(isMarkAllDisabled, true, "Case 3: Mark All Present MUST be disabled on existing attendance read error");
       console.log("✓ Case 3 Verified: Read failure never defaults to PRESENT and completely disables Save controls");
     }
+
+    // Restore test records to baseline state
+    await db.update(attendanceTable).set({ lectureInstanceId: null, status: "PRESENT" }).where(sql`${attendanceTable.date} = '2026-08-31' AND ${attendanceTable.subjectId} = ${theoryLec.subjectId}`);
+    await db.delete(lectureInstancesTable).where(sql`${lectureInstancesTable.date} = '2026-08-31' AND ${lectureInstancesTable.timetableEntryId} = ${theoryLec.timetableEntryId}`);
 
     console.log("\n==================================================");
     console.log("ALL PHASE 4 TESTS PASSED SUCCESSFULLY! (100% OK)");

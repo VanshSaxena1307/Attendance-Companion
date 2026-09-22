@@ -43,11 +43,16 @@ import {
 const pct = (n: number) => `${n.toFixed(1)}%`;
 const safeArray = <T,>(val: T[] | undefined | null): T[] => val || [];
 
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12, 0, 0));
+}
+
 function fmtDateRange(start: string, end: string): string {
   try {
-    const s = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' }).format(new Date(start));
+    const s = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }).format(parseLocalDate(start));
     if (start === end) return s;
-    const e = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' }).format(new Date(end));
+    const e = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }).format(parseLocalDate(end));
     return `${s} – ${e}`;
   } catch {
     return `${start} – ${end}`;

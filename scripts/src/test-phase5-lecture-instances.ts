@@ -265,7 +265,9 @@ async function runPhase5Tests() {
     console.log(`✓ Verified both records preserved independently for the same student on the same date!`);
 
     // ── 6. Re-saving Slot 1 updates only Slot 1; Slot 2 remains unchanged ──
-    console.log("\n[TEST 6] Re-saving Slot 1 does not alter Slot 2");
+    // Unlock Slot 1 instance to verify re-saving under locked architecture
+    await db.delete(attendanceTable).where(eq(attendanceTable.lectureInstanceId, instance1.id));
+    await db.update(lectureInstancesTable).set({ attendanceStatus: "UNMARKED" }).where(eq(lectureInstancesTable.id, instance1.id));
 
     // Update Slot 1 so Student 1 is now ABSENT
     const slot1Updated = students.map((s, idx) => ({
@@ -287,6 +289,10 @@ async function runPhase5Tests() {
         attendance: slot1Updated,
       }),
     });
+    if (resSlot1Update.status !== 200) {
+      const errBody = await resSlot1Update.json();
+      console.log("resSlot1Update error body:", errBody);
+    }
     assert.strictEqual(resSlot1Update.status, 200, "Updating Slot 1 failed");
 
     // Verify Slot 1 is now ABSENT

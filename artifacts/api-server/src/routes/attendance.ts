@@ -175,9 +175,12 @@ router.put("/teacher/attendance", async (req, res): Promise<void> => {
   const timetableEntryId = typeof req.body?.timetableEntryId === "string" ? req.body.timetableEntryId : undefined;
   const lectureInstanceId = typeof req.body?.lectureInstanceId === "string" ? req.body.lectureInstanceId : undefined;
   try {
+    const submissionDate = typeof req.body?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date)
+      ? req.body.date
+      : isoDate(body.data.date);
     const attendance = await teacherAttendance.submitTeacherAttendance(teacher.id, {
       ...body.data,
-      date: isoDate(body.data.date),
+      date: submissionDate,
       timetableEntryId,
       lectureInstanceId,
     });
