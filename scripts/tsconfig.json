@@ -6,5 +6,5 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["src/test-*.ts", "src/migrate-*.ts", "src/inspect-*.ts", "src/verify-*.ts"]
+  "exclude": ["src/test-*.ts", "src/migrate-*.ts", "src/inspect-*.ts", "src/verify-*.ts", "src/prove-*.ts"]
 }

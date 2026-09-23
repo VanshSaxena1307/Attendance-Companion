@@ -150,7 +150,8 @@ router.get("/teacher/sections/:sectionId/students", async (req, res): Promise<vo
   const query = GetTeacherSectionStudentsQueryParams.safeParse(req.query);
   if (!params.success || !query.success) { res.status(400).json({ error: "A valid sectionId and subjectId are required." }); return; }
   const timetableEntryId = typeof req.query.timetableEntryId === "string" ? req.query.timetableEntryId : undefined;
-  const students = await teacherAttendance.getTeacherStudents(teacher.id, query.data.subjectId, params.data.sectionId, timetableEntryId);
+  const lectureInstanceId = typeof req.query.lectureInstanceId === "string" ? req.query.lectureInstanceId : undefined;
+  const students = await teacherAttendance.getTeacherStudents(teacher.id, query.data.subjectId, params.data.sectionId, timetableEntryId, lectureInstanceId);
   if (!students) { res.status(403).json({ error: "You are not assigned to this subject and section." }); return; }
   res.json(GetTeacherSectionStudentsResponse.parse(students));
 });

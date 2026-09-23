@@ -178,17 +178,50 @@ async function teacherAssignment(teacherId: string, subjectId: string, sectionId
   return assignment;
 }
 
-export async function getTeacherStudents(teacherId: string, subjectId: string, sectionId: string, timetableEntryId?: string) {
-  if (!await teacherAssignment(teacherId, subjectId, sectionId)) return undefined;
-
+export async function getTeacherStudents(
+  teacherId: string,
+  subjectId: string,
+  sectionId: string,
+  timetableEntryId?: string,
+  lectureInstanceId?: string
+) {
   let batchCondition = undefined;
+  let isAuthorized = false;
+
   if (timetableEntryId) {
     const [entry] = await db
       .select()
       .from(timetableEntriesTable)
       .where(eq(timetableEntriesTable.id, timetableEntryId));
 
-    if (!entry || entry.teacherId !== teacherId || entry.sectionId !== sectionId || entry.subjectId !== subjectId) {
+    if (!entry || entry.sectionId !== sectionId || entry.subjectId !== subjectId) {
+      return undefined;
+    }
+
+    if (entry.teacherId === teacherId) {
+      isAuthorized = true;
+    } else {
+      // Check if substitute teacher on existing lecture instance
+      const [inst] = await db
+        .select({ id: lectureInstancesTable.id })
+        .from(lectureInstancesTable)
+        .where(
+          and(
+            eq(lectureInstancesTable.timetableEntryId, timetableEntryId),
+            or(
+              eq(lectureInstancesTable.teacherId, teacherId),
+              eq(lectureInstancesTable.actualTeacherId, teacherId)
+            )
+          )
+        );
+      if (inst) {
+        isAuthorized = true;
+      } else if (!entry.teacherId && (await teacherAssignment(teacherId, subjectId, sectionId))) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
       return undefined;
     }
 
@@ -199,13 +232,52 @@ export async function getTeacherStudents(teacherId: string, subjectId: string, s
     } else if (entry.batchType === "CLOUD") {
       batchCondition = eq(studentsTable.cloudBatch, entry.batch);
     }
+  } else if (lectureInstanceId) {
+    const [instance] = await db
+      .select()
+      .from(lectureInstancesTable)
+      .where(eq(lectureInstancesTable.id, lectureInstanceId));
+
+    if (!instance || instance.sectionId !== sectionId || instance.subjectId !== subjectId) {
+      return undefined;
+    }
+
+    if (instance.teacherId === teacherId || instance.actualTeacherId === teacherId) {
+      isAuthorized = true;
+    } else if (!instance.teacherId && (await teacherAssignment(teacherId, subjectId, sectionId))) {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return undefined;
+    }
+
+    if (instance.batchType === "LAB") {
+      batchCondition = eq(studentsTable.labBatch, instance.batch);
+    } else if (instance.batchType === "PYTHON") {
+      batchCondition = eq(studentsTable.pythonBatch, instance.batch);
+    } else if (instance.batchType === "CLOUD") {
+      batchCondition = eq(studentsTable.cloudBatch, instance.batch);
+    }
+  } else {
+    // Manual fallback class selector: Requires verified teacher assignment in teacher_subject_sections
+    const assignment = await teacherAssignment(teacherId, subjectId, sectionId);
+    if (!assignment) {
+      return undefined;
+    }
   }
 
   const whereCondition = batchCondition
     ? and(eq(studentsTable.sectionId, sectionId), batchCondition)
     : eq(studentsTable.sectionId, sectionId);
 
-  return db.select({ id: studentsTable.id, name: usersTable.name, rollNo: studentsTable.rollNo, admissionNo: studentsTable.admissionNo })
+  return db
+    .select({
+      id: studentsTable.id,
+      name: usersTable.name,
+      rollNo: studentsTable.rollNo,
+      admissionNo: studentsTable.admissionNo,
+    })
     .from(studentsTable)
     .innerJoin(usersTable, eq(usersTable.id, studentsTable.id))
     .where(whereCondition)
@@ -290,7 +362,71 @@ export async function getTeacherAttendance(
   timetableEntryId?: string,
   lectureInstanceId?: string
 ) {
-  if (!await teacherAssignment(teacherId, subjectId, sectionId)) return undefined;
+  let isAuthorized = false;
+
+  if (timetableEntryId) {
+    const [entry] = await db
+      .select()
+      .from(timetableEntriesTable)
+      .where(eq(timetableEntriesTable.id, timetableEntryId));
+
+    if (!entry || entry.sectionId !== sectionId || entry.subjectId !== subjectId) {
+      return undefined;
+    }
+
+    if (entry.teacherId === teacherId) {
+      isAuthorized = true;
+    } else {
+      // Check if substitute teacher on existing lecture instance for date
+      const [inst] = await db
+        .select({ id: lectureInstancesTable.id })
+        .from(lectureInstancesTable)
+        .where(
+          and(
+            eq(lectureInstancesTable.timetableEntryId, timetableEntryId),
+            eq(lectureInstancesTable.date, date),
+            or(
+              eq(lectureInstancesTable.teacherId, teacherId),
+              eq(lectureInstancesTable.actualTeacherId, teacherId)
+            )
+          )
+        );
+      if (inst) {
+        isAuthorized = true;
+      } else if (!entry.teacherId && (await teacherAssignment(teacherId, subjectId, sectionId))) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      return undefined;
+    }
+  } else if (lectureInstanceId) {
+    const [instance] = await db
+      .select()
+      .from(lectureInstancesTable)
+      .where(eq(lectureInstancesTable.id, lectureInstanceId));
+
+    if (!instance || instance.sectionId !== sectionId || instance.subjectId !== subjectId) {
+      return undefined;
+    }
+
+    if (instance.teacherId === teacherId || instance.actualTeacherId === teacherId) {
+      isAuthorized = true;
+    } else if (!instance.teacherId && (await teacherAssignment(teacherId, subjectId, sectionId))) {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return undefined;
+    }
+  } else {
+    // Manual fallback: requires teacher assignment in teacher_subject_sections
+    const assignment = await teacherAssignment(teacherId, subjectId, sectionId);
+    if (!assignment) {
+      return undefined;
+    }
+  }
 
   let resolvedInstanceId = lectureInstanceId;
   if (!resolvedInstanceId && timetableEntryId) {
@@ -309,7 +445,12 @@ export async function getTeacherAttendance(
   }
 
   if (resolvedInstanceId) {
-    return db.select({ studentId: attendanceTable.studentId, status: attendanceTable.status, markedAt: attendanceTable.markedAt })
+    return db
+      .select({
+        studentId: attendanceTable.studentId,
+        status: attendanceTable.status,
+        markedAt: attendanceTable.markedAt,
+      })
       .from(attendanceTable)
       .where(eq(attendanceTable.lectureInstanceId, resolvedInstanceId))
       .orderBy(asc(attendanceTable.studentId));
@@ -322,9 +463,20 @@ export async function getTeacherAttendance(
   }
 
   // Fallback for general queries
-  return db.select({ studentId: attendanceTable.studentId, status: attendanceTable.status, markedAt: attendanceTable.markedAt })
+  return db
+    .select({
+      studentId: attendanceTable.studentId,
+      status: attendanceTable.status,
+      markedAt: attendanceTable.markedAt,
+    })
     .from(attendanceTable)
-    .where(and(eq(attendanceTable.subjectId, subjectId), eq(attendanceTable.sectionId, sectionId), eq(attendanceTable.date, date)))
+    .where(
+      and(
+        eq(attendanceTable.subjectId, subjectId),
+        eq(attendanceTable.sectionId, sectionId),
+        eq(attendanceTable.date, date)
+      )
+    )
     .orderBy(asc(attendanceTable.studentId));
 }
 
@@ -414,7 +566,7 @@ export async function submitTeacherAttendance(
   }
 
   if (targetInstanceId) {
-    return await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       // 1. Acquire exclusive row lock on the lecture instance
       const [inst] = await tx
         .select()
@@ -423,7 +575,7 @@ export async function submitTeacherAttendance(
         .for("update");
 
       if (!inst) {
-        return undefined;
+        throw new TeacherInputError("Lecture instance not found.");
       }
 
       // 2. Status & Lock check: If cancelled or attendance already marked, reject immediately
@@ -431,7 +583,7 @@ export async function submitTeacherAttendance(
         throw new TeacherInputError("Attendance cannot be marked for a cancelled lecture.");
       }
 
-      const teacherMatches = inst.teacherId === teacherId || inst.actualTeacherId === teacherId || Boolean(assignment);
+      const teacherMatches = inst.teacherId === teacherId || inst.actualTeacherId === teacherId || (!inst.timetableEntryId && Boolean(assignment));
       if (!teacherMatches || inst.sectionId !== input.sectionId || inst.subjectId !== input.subjectId) {
         return undefined;
       }
@@ -493,7 +645,7 @@ export async function submitTeacherAttendance(
         sectionId: input.sectionId,
         date: input.date,
         status: record.status,
-        detail: `Marked by ${assignment.teacherName}`,
+        detail: `Marked by ${assignment?.teacherName || inst.teacherName || "Teacher"}`,
         markedBy: teacherId,
         markedAt,
       }))).onConflictDoUpdate({
@@ -518,13 +670,13 @@ export async function submitTeacherAttendance(
           markedAt,
         })
         .where(eq(lectureInstancesTable.id, inst.id));
-
-      return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date, input.timetableEntryId, inst.id);
     });
+
+    return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date, input.timetableEntryId, targetInstanceId);
   }
 
   // Manual fallback (no timetable entry / lecture instance)
-  return await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const todayStr = getLocalDateString();
     if (input.date > todayStr) {
       throw new TeacherInputError("Attendance cannot be marked for future dates.");
@@ -576,9 +728,9 @@ export async function submitTeacherAttendance(
         markedAt,
       },
     });
-
-    return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date);
   });
+
+  return getTeacherAttendance(teacherId, input.subjectId, input.sectionId, input.date);
 }
 
 export type UserSettings = {
